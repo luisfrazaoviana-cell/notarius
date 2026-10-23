@@ -3,12 +3,14 @@
 // Quando o mesmo registro muda nos dois aparelhos, vale a alteração mais recente.
 
 const ARQ_DADOS = 'NOTARIUS-DADOS.json';
-const CFG_COMPARTILHADA = ['repassePct', 'cidade', 'cabecalho', 'banco', 'pix', 'descricaoGuia', 'repassesPagos'];
+const CFG_COMPARTILHADA = ['repassesPagos', 'cartorios', 'tabelas', 'comConferencias', 'comEnvios', 'folhasInutilizadas', 'comInicio'];
 
 const Reg = {
   timer: null, sincronizando: null, ultimaSinc: 0,
 
   async todos(loja) { return (await DB.todos(loja)).filter(r => !r.excluido); },
+  // Só os registros do cartório escolhido no topo.
+  async doCartorio(loja) { return (await this.todos(loja)).filter(doCartorio); },
   get: (loja, id) => DB.get(loja, id),
 
   async salvar(loja, rec) {

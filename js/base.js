@@ -87,11 +87,84 @@ const CFG_PADRAO = {
   pix: '00020126480014br.gov.bcb.pix0126luis.frazaoviana@gmail.com5204000053039865802BR5925LUIS ALBERTO FRAZAO MODES6010ANANINDEUA62580520SAN2026090817300175750300017br.gov.bcb.brcode01051.0.06304864D',
   descricaoGuia: 'Escritura Pública de Compra e Venda, Certidão e Diligências',
   repassesPagos: {},
+  // Comunicações: conferências das folhas, envios autorizados e folhas inutilizadas (comuns entre aparelhos).
+  comConferencias: {}, comEnvios: {}, folhasInutilizadas: {}, comInicio: '2026-10-01',
   ultimoBackup: 0, syncLido: 0, syncEscrito: 0
 };
 let CFG = { ...CFG_PADRAO };
-async function carregarCfg() { CFG = { ...CFG_PADRAO, ...(await DB.get('kv', 'cfg') || {}) }; }
+async function carregarCfg() {
+  CFG = { ...CFG_PADRAO, ...(await DB.get('kv', 'cfg') || {}) };
+  // Primeira vez com vários cartórios: o cartório de Bujaru herda os ajustes que já existiam.
+  if (!CFG.cartorios) {
+    CFG.cartorios = [
+      { ...CARTORIO_BUJARU, banco: CFG.banco, pix: CFG.pix, descricaoGuia: CFG.descricaoGuia,
+        repassePct: CFG.repassePct, raizId: CFG.raizId || '' },
+      { ...CARTORIO_NOVO, id: 'c2' }
+    ];
+    await DB.put('kv', CFG, 'cfg');
+  }
+  if (!CFG.cartorioAtual || !CFG.cartorios.find(c => c.id === CFG.cartorioAtual)) CFG.cartorioAtual = CFG.cartorios[0].id;
+  // Identidade visual aprovada (out/2026): azul-marinho, logo e timbre com o nome completo.
+  // Só troca o que ainda estiver no padrão antigo; o que você já editou em Ajustes fica como está.
+  let mudou = false;
+  CFG.cartorios = CFG.cartorios.map(c => {
+    const n = { ...c };
+    if (c.id === 'bujaru') {
+      if (c.cor === '#1d5c4d') { n.cor = CARTORIO_BUJARU.cor; mudou = true; }
+      if (!c.logo) { n.logo = CARTORIO_BUJARU.logo; mudou = true; }
+      if (!c.cabecalho || c.cabecalho === CABECALHO_ANTIGO) { n.cabecalho = CARTORIO_BUJARU.cabecalho; mudou = true; }
+      if (!c.timbre) { n.timbre = CARTORIO_BUJARU.timbre; mudou = true; }
+      if (!c.endereco || c.endereco === 'Rodovia PA-140, Km 29, Vila Santana, Centro, Bujaru/PA – CEP 68.670-000') { n.endereco = CARTORIO_BUJARU.endereco; mudou = true; }
+    } else if (c.cor === '#1f4e79') { n.cor = CARTORIO_NOVO.cor; mudou = true; }
+    return n;
+  });
+  if (mudou) { CFG.compartilhadoEm = Date.now(); await DB.put('kv', CFG, 'cfg'); }
+}
 async function salvarCfg(mudancas) { Object.assign(CFG, mudancas); await DB.put('kv', CFG, 'cfg'); }
+
+/* ----------------------------- Cartórios ----------------------------- */
+// Cada cartório tem pasta, tabela, quem lavra, dados da guia e repasse próprios.
+const CABECALHO_ANTIGO = 'CARTÓRIO DE SANTANA DE BUJARU\nMARIA ELISA CORDEIRO DE SANTANA – Registradora e Tabeliã';
+const CARTORIO_BUJARU = {
+  id: 'bujaru', nome: 'Santana de Bujaru', uf: 'PA', cor: '#14284b', logo: 'marca/logo-selo.png',
+  cabecalho: 'CARTÓRIO DE NOTAS E REGISTRO CIVIL DE PESSOAS NATURAIS\nCOMARCA DE BUJARU · ESTADO DO PARÁ\nMARIA ELISA CORDEIRO DE SANTANA – Registradora e Tabeliã',
+  // Timbre da minuta (faixa azul, sem rodapé por causa da assinatura eletrônica).
+  timbre: 'CARTÓRIO SANTANA\nCartório de Notas e Registro Civil de Pessoas Naturais\nComarca de Bujaru\nMARIA ELISA CORDEIRO DE SANTANA – Tabeliã e Registradora',
+  endereco: 'Rodovia PA-140, Km 29, Vila Santana\nCentro, Bujaru/PA – CEP 68.670-000',
+  pasta: 'ESCRITURAS ORGANIZADAS', tabela: 'PA2026', issPct: 5,
+  lavrador: 'LUÍS ALBERTO FRAZÃO MODESTO', cargo: 'Tabelião e Registrador Substituto', cargoCurto: 'Tabelião Substituto',
+  localTrad: 'neste Distrito, Comarca e Município de Bujaru – PA', localRev: 'neste Distrito, Município e Comarca de Bujaru, Estado do Pará',
+  cidadeData: 'Bujaru/PA', siglaArquivo: 'BUJARU', repasseDestino: 'Cartório de Santana', repassePct: 45, codCertidao: '453', codDiligencia: '695'
+};
+const CARTORIO_NOVO = {
+  id: '', nome: 'Outro cartório', uf: 'PA', cor: '#6b2737', logo: '', pasta: 'ESCRITURAS OUTRO CARTORIO', tabela: 'PA2026', issPct: 5,
+  lavrador: '', cargo: 'Tabelião', cargoCurto: 'Tabelião', localTrad: '', localRev: '', cidadeData: '', siglaArquivo: '',
+  cabecalho: '', banco: '', pix: '', descricaoGuia: 'Escritura Pública de Compra e Venda, Certidão e Diligências',
+  repasseDestino: '', repassePct: 0, codCertidao: '453', codDiligencia: '695', raizId: ''
+};
+const C = () => CFG.cartorios.find(c => c.id === CFG.cartorioAtual) || CFG.cartorios[0];
+const doCartorio = r => (r.cartorioId || 'bujaru') === CFG.cartorioAtual;
+// Tabela de emolumentos do cartório atual (a do Pará já vem no app; as outras são importadas).
+const TAB = () => C().tabela === 'PA2026' ? DADOS : ((CFG.tabelas || {})[C().tabela] || null);
+const issDe = c => pct(c, Number(C().issPct ?? 5));
+// Chave do repasse pago: Bujaru continua com o mês puro (compatível com o que já foi marcado).
+const chaveRepasse = m => CFG.cartorioAtual === 'bujaru' ? m : `${CFG.cartorioAtual}:${m}`;
+
+function aplicarCorCartorio() {
+  document.documentElement.style.setProperty('--accent', C().cor || '#14284b');
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', C().cor || '#14284b');
+}
+
+// Logo do cartório em data URL (para o PDF da guia), guardada depois da primeira leitura.
+const _logos = {};
+async function logoDataURL() {
+  const src = C().logo;
+  if (!src) return null;
+  if (!_logos[src]) _logos[src] = fetch(src).then(r => r.ok ? r.blob() : null).then(b => b && new Promise(ok => {
+    const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(b);
+  })).catch(() => null);
+  return _logos[src];
+}
 
 /* ------------------------- Avisos e modal ------------------------- */
 function aviso(texto, tipo = 'ok') {
@@ -141,6 +214,7 @@ function carregarScript(url) {
 }
 const LIB = {
   jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  pdflib: 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js',
   pdfjs: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   pdfjsWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   qr: 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js',
@@ -155,11 +229,12 @@ async function pdfjs() {
 
 // Cálculo de um ato com faixa de valor (usado no orçamento e no controle).
 function calcularAto(lista, valor, perc = 0) {
-  const linha = lista.find(r => r.de !== null && valor >= r.de && (r.ate === null || valor <= r.ate));
+  const linha = (lista || []).find(r => r.de !== null && valor >= r.de && (r.ate === null || valor <= r.ate));
   if (!linha) return null;
   const acresc = Math.min(pct(linha.emol, Math.min(perc, 90)), linha.emol);
   const emol = linha.emol + acresc;
-  const iss = pct(emol, 5);
-  return { linha, emolBase: linha.emol, acresc, emol, selo: linha.selo, iss, total: emol + (linha.frc || 0) + (linha.frj || 0) + linha.selo + iss };
+  const iss = issDe(emol);
+  return { linha, emolBase: linha.emol, acresc, emol, selo: linha.selo || 0, iss, total: emol + (linha.frc || 0) + (linha.frj || 0) + (linha.selo || 0) + iss };
 }
-const totalAvulso = (cod, q = 1) => { const r = DADOS.avulsos.find(a => a.cod === cod); return (r.emol + r.selo + pct(r.emol, 5)) * q; };
+const avulsoDe = cod => cod && TAB() && (TAB().avulsos || []).find(a => a.cod === cod);
+const totalAvulso = (cod, q = 1) => { const r = avulsoDe(cod); return r ? (r.emol + (r.selo || 0) + issDe(r.emol)) * q : 0; };

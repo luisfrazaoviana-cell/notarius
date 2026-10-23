@@ -5,8 +5,14 @@ const NATUREZAS = ['ESCRITURA PÚBLICA DE COMPRA E VENDA', 'ESCRITURA PÚBLICA D
   'ESCRITURA PÚBLICA DE DAÇÃO EM PAGAMENTO', 'ESCRITURA PÚBLICA DE CESSÃO DE DIREITOS', 'ESCRITURA PÚBLICA DE DOAÇÃO',
   'ESCRITURA PÚBLICA DECLARATÓRIA', 'PROCURAÇÃO PÚBLICA', 'ADITAMENTO / RE-RATIFICAÇÃO', 'OUTRA'];
 
+// Procuração: mesma estrutura de pastas da escritura ("MINUTA - PROCURACAO - MANDANTE x PROCURADOR").
+const ehProcuracao = r => /PROCURA/i.test((r && (r.natureza || r.nome)) || '');
+
 const Esc = {
   parceiros: [],   // [{nome, id}]
+
+  // Bujaru mantém os ids antigos; os outros cartórios ganham o prefixo "id|".
+  idEsc(parceiro, nomeAto) { return (CFG.cartorioAtual === 'bujaru' ? '' : CFG.cartorioAtual + '|') + `${parceiro}/${nomeAto}`; },
 
   // "IMÓVEL - VENDEDOR x COMPRADOR" -> partes, quando ainda não preenchidas.
   partesDoNome(nomeAto) {
@@ -21,18 +27,18 @@ const Esc = {
     await Pastas.preparar();
     const pastasParc = (await Nuvem.listar(Pastas.raiz)).filter(f => f.pasta);
     this.parceiros = pastasParc.map(p => ({ nome: p.nome, id: p.id })).sort((a, b) => a.nome.localeCompare(b.nome));
-    const existentes = new Map((await DB.todos('escrituras')).map(r => [r.id, r]));
+    const existentes = new Map((await DB.todos('escrituras')).filter(doCartorio).map(r => [r.id, r]));
     const vistos = new Set(), mudadas = [];
     for (const p of pastasParc) {
       for (const f of (await Nuvem.listar(p.id)).filter(x => x.pasta)) {
         const m = f.nome.match(RE_ESCRITURA);
         if (!m) continue;
-        const id = `${p.nome}/${m[2]}`;
+        const id = this.idEsc(p.nome, m[2]);
         vistos.add(id);
         const sit = m[1].toUpperCase();
         let r = existentes.get(id);
         if (!r) {
-          r = { id, parceiro: p.nome, nome: m[2], natureza: 'ESCRITURA PÚBLICA DE COMPRA E VENDA', ...this.partesDoNome(m[2]), criadoEm: agora() };
+          r = { id, cartorioId: CFG.cartorioAtual, parceiro: p.nome, nome: m[2], natureza: /PROCURA/i.test(m[2]) ? 'PROCURAÇÃO PÚBLICA' : 'ESCRITURA PÚBLICA DE COMPRA E VENDA', ...this.partesDoNome(m[2]), criadoEm: agora() };
         } else if (r.pasta === f.nome && r.driveId === f.id && r.situacao === sit && !r.semPasta) continue;
         Object.assign(r, { pasta: f.nome, driveId: f.id, situacao: sit, parceiroId: p.id, semPasta: false, atualizadoEm: agora() });
         mudadas.push(r);
@@ -67,14 +73,16 @@ const Esc = {
 
   /* ---------------------------- Lista ---------------------------- */
   async render() {
-    const todos = (await Reg.todos('escrituras')).sort((a, b) => (b.dataLavratura || '9').localeCompare(a.dataLavratura || '9') || a.nome.localeCompare(b.nome));
+    const todos = (await Reg.doCartorio('escrituras')).sort((a, b) => (b.dataLavratura || '9').localeCompare(a.dataLavratura || '9') || a.nome.localeCompare(b.nome));
     const parcs = [...new Set(todos.map(r => r.parceiro))].sort();
     const sel = $('escParceiro'), atual = sel.value;
     sel.innerHTML = '<option value="">Todos os parceiros</option>' + parcs.map(p => `<option ${p === atual ? 'selected' : ''}>${esc(p)}</option>`).join('');
-    const q = semAcento($('escBusca').value).toLowerCase().trim(), sit = $('escSituacao').value;
+    const q = semAcento($('escBusca').value).toLowerCase().trim(), sit = $('escSituacao').value, tipo = $('escTipo').value;
     const lista = todos.filter(r => (!sel.value || r.parceiro === sel.value) && (!sit || r.situacao === sit) &&
+      (!tipo || (tipo === 'proc') === ehProcuracao(r)) &&
       (!q || semAcento([r.nome, r.outorgantes, r.outorgados, r.imovel, r.selo, r.livro, r.folhas, r.parceiro].join(' ')).toLowerCase().includes(q)));
-    $('escResumo').textContent = `${lista.length} de ${todos.length} escrituras · ${todos.filter(r => r.situacao === 'MINUTA').length} minutas · ${todos.filter(r => r.situacao === 'LAVRADA').length} lavradas`;
+    const nProc = todos.filter(ehProcuracao).length;
+    $('escResumo').textContent = `${lista.length} de ${todos.length} atos (${todos.length - nProc} escrituras, ${nProc} procurações) · ${todos.filter(r => r.situacao === 'MINUTA').length} minutas · ${todos.filter(r => r.situacao === 'LAVRADA').length} lavradas`;
     $('escLista').innerHTML = lista.length ? lista.map(r => this.itemHTML(r)).join('') : '<div class="vazio">Nenhuma escritura. Use "Atualizar do Drive" ou "+ Nova escritura".</div>';
   },
 
@@ -87,23 +95,37 @@ const Esc = {
   },
 
   /* ---------------------------- Nova ---------------------------- */
-  nova() {
+  nova(natureza) {
     const parcs = (this.parceiros.length ? this.parceiros.map(p => p.nome) : CFG.parceirosCache || []);
-    abrirModal('Nova escritura', `
+    const proc = ehProcuracao({ natureza });
+    abrirModal(proc ? 'Nova procuração' : 'Nova escritura', `
       <label class="f">Parceiro (pasta)</label>
       <select id="nvParc">${parcs.map(p => `<option>${esc(p)}</option>`).join('')}<option value="__novo">+ Novo parceiro…</option></select>
       <input id="nvParcNovo" type="text" class="hidden" placeholder="Nome do parceiro (vira MAIÚSCULAS, sem acento)" style="margin-top:6px">
       <label class="f">Natureza</label>
-      <select id="nvNat">${NATUREZAS.map(n => `<option>${n}</option>`).join('')}</select>
-      <label class="f">Imóvel (curto)</label><input id="nvImovel" type="text" placeholder="LOTE 09 AGUAS DO PARICA">
+      <select id="nvNat">${NATUREZAS.map(n => `<option ${n === natureza ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <label class="f" id="nvLblImovel">Imóvel (curto)</label><input id="nvImovel" type="text">
       <div class="linha2">
-        <div><label class="f">Outorgante(s) / vendedor</label><input id="nvA" type="text" placeholder="JOSE E MARIA"></div>
-        <div><label class="f">Outorgado(s) / comprador</label><input id="nvB" type="text" placeholder="ANA SOUZA"></div>
+        <div><label class="f" id="nvLblA">Outorgante(s) / vendedor</label><input id="nvA" type="text" placeholder="JOSE E MARIA"></div>
+        <div><label class="f" id="nvLblB">Outorgado(s) / comprador</label><input id="nvB" type="text" placeholder="ANA SOUZA"></div>
       </div>
-      <div class="checks"><label><input type="checkbox" id="nvRural"> Imóvel rural</label></div>
+      <div class="checks" id="nvBoxRural"><label><input type="checkbox" id="nvRural"> Imóvel rural</label></div>
       <div class="hint" id="nvPrev"></div>
       <div class="acoes"><button class="prim" id="nvCriar">Criar pasta</button></div>`, corpo => {
+      let ultimoProc = null;
       const prev = () => {
+        const p = ehProcuracao({ natureza: $('nvNat').value });
+        if (p !== ultimoProc) {
+          // Procuração: o campo do imóvel vira o tipo do ato (vai no nome da pasta, como no HD).
+          $('nvLblImovel').textContent = p ? 'Tipo (curto)' : 'Imóvel (curto)';
+          $('nvImovel').placeholder = p ? 'PROCURACAO PREVIDENCIARIA' : 'LOTE 09 AGUAS DO PARICA';
+          if (p && !$('nvImovel').value) $('nvImovel').value = 'PROCURACAO';
+          if (!p && $('nvImovel').value === 'PROCURACAO') $('nvImovel').value = '';
+          $('nvLblA').textContent = p ? 'Mandante(s)' : 'Outorgante(s) / vendedor';
+          $('nvLblB').textContent = p ? 'Procurador(es)' : 'Outorgado(s) / comprador';
+          $('nvBoxRural').classList.toggle('hidden', p);
+          ultimoProc = p;
+        }
         $('nvParcNovo').classList.toggle('hidden', $('nvParc').value !== '__novo');
         $('nvPrev').textContent = 'Pasta: ' + this.nomeNovaPasta();
       };
@@ -124,7 +146,7 @@ const Esc = {
     try {
       const parceiro = $('nvParc').value === '__novo' ? nomePasta($('nvParcNovo').value) : $('nvParc').value;
       if (!parceiro) throw new Error('Informe o parceiro.');
-      if (!$('nvA').value.trim() || !$('nvB').value.trim()) throw new Error('Informe outorgante e outorgado.');
+      if (!$('nvA').value.trim() || !$('nvB').value.trim()) throw new Error(ehProcuracao({ natureza: $('nvNat').value }) ? 'Informe mandante e procurador.' : 'Informe outorgante e outorgado.');
       const nomeFull = this.nomeNovaPasta(), nomeAto = nomeFull.replace(RE_ESCRITURA, '$2');
       await Pastas.preparar();
       const parc = await Nuvem.acharOuCriarPasta(parceiro, Pastas.raiz);
@@ -132,13 +154,13 @@ const Esc = {
       const ja = irmas.find(f => f.pasta && f.nome.replace(RE_ESCRITURA, '$2') === nomeAto);
       const pasta = ja || await Nuvem.criarPasta(nomeFull, parc.id);
       if (!ja) for (const s of SUBPASTAS) await Nuvem.criarPasta(s, pasta.id);
-      const id = `${parceiro}/${nomeAto}`;
-      const rec = { ...(await Reg.get('escrituras', id) || {}), id, parceiro, parceiroId: parc.id, nome: nomeAto, pasta: pasta.nome, driveId: pasta.id,
+      const id = this.idEsc(parceiro, nomeAto);
+      const rec = { ...(await Reg.get('escrituras', id) || {}), id, cartorioId: CFG.cartorioAtual, parceiro, parceiroId: parc.id, nome: nomeAto, pasta: pasta.nome, driveId: pasta.id,
         situacao: RE_ESCRITURA.exec(pasta.nome)[1].toUpperCase(), natureza: $('nvNat').value, imovel: $('nvImovel').value.trim().toUpperCase(),
-        outorgantes: $('nvA').value.trim().toUpperCase(), outorgados: $('nvB').value.trim().toUpperCase(), rural: $('nvRural').checked, criadoEm: agora() };
+        outorgantes: $('nvA').value.trim().toUpperCase(), outorgados: $('nvB').value.trim().toUpperCase(), rural: !ehProcuracao({ natureza: $('nvNat').value }) && $('nvRural').checked, criadoEm: agora() };
       await Reg.salvar('escrituras', rec);
       if (!this.parceiros.find(p => p.nome === parceiro)) this.parceiros.push({ nome: parceiro, id: parc.id });
-      aviso(ja ? 'Já existia uma pasta deste ato; abri a existente.' : 'Pasta criada com as 4 subpastas.');
+      aviso(ja ? 'Já existia uma pasta deste ato; abri a existente.' : `Pasta criada com as ${SUBPASTAS.length} subpastas.`);
       fecharModal();
       App.atualizarTudo();
       this.detalhe(id);
@@ -154,9 +176,9 @@ const Esc = {
       <div class="hint" style="margin-bottom:6px"><span class="selo ${r.situacao === 'LAVRADA' ? 'lavrada' : 'minuta'}">${r.situacao}</span> ${esc(r.parceiro)} · <a href="${Nuvem.linkPasta(r.driveId)}" target="_blank" rel="noopener">abrir pasta no Drive</a></div>
       <div class="linha2">
         <div><label class="f">Natureza</label><select id="ed_natureza">${NATUREZAS.map(n => `<option ${n === r.natureza ? 'selected' : ''}>${n}</option>`).join('')}${NATUREZAS.includes(r.natureza) || !r.natureza ? '' : `<option selected>${esc(r.natureza)}</option>`}</select></div>
-        ${campo('imovel', 'Imóvel')}
-        ${campo('outorgantes', 'Outorgante(s)')}
-        ${campo('outorgados', 'Outorgado(s)')}
+        ${campo('imovel', ehProcuracao(r) ? 'Tipo' : 'Imóvel')}
+        ${campo('outorgantes', ehProcuracao(r) ? 'Mandante(s)' : 'Outorgante(s)')}
+        ${campo('outorgados', ehProcuracao(r) ? 'Procurador(es)' : 'Outorgado(s)')}
         ${campo('dataLavratura', 'Data da lavratura', 'date')}
         ${campo('selo', 'Selo digital')}
         ${campo('livro', 'Livro')}
@@ -176,7 +198,7 @@ const Esc = {
       <div class="acoes">
         <button class="prim" id="edSalvar">Salvar</button>
         ${r.situacao !== 'LAVRADA' ? '<button class="ouro" id="edLavrar">Marcar como LAVRADA</button>' : ''}
-        <button id="edOrc">Fazer orçamento</button>
+        ${ehProcuracao(r) ? '' : '<button id="edOrc">Fazer orçamento</button>'}
         <button id="edMinuta">Fazer minuta</button>
         <button id="edExcluir" style="margin-left:auto">Tirar da lista</button>
       </div>
@@ -185,7 +207,7 @@ const Esc = {
       ['base', 'emolumentos', 'valorRecebido'].forEach(k => formatarAoSair($('ed_' + k)));
       $('edSalvar').onclick = () => this.salvarDetalhe(id);
       if ($('edLavrar')) $('edLavrar').onclick = () => this.lavrar(id);
-      $('edOrc').onclick = () => { fecharModal(); Orc.novo({ escId: id }); };
+      if ($('edOrc')) $('edOrc').onclick = () => { fecharModal(); Orc.novo({ escId: id }); };
       $('edMinuta').onclick = () => { fecharModal(); App.ir('ferramentas'); abrirSub('minuta'); minutaDaEscritura(id); };
       $('edExcluir').onclick = async () => {
         if (!await confirmar('Tirar da lista', 'Tirar esta escritura da lista do Notarius? A pasta no Drive não é apagada.')) return;
@@ -200,7 +222,7 @@ const Esc = {
     const val = k => $('ed_' + k).value.trim();
     Object.assign(r, {
       natureza: val('natureza'), imovel: val('imovel'), outorgantes: val('outorgantes'), outorgados: val('outorgados'),
-      dataLavratura: val('dataLavratura'), selo: val('selo'), livro: val('livro'), folhas: val('folhas'), codigo: val('codigo'),
+      dataLavratura: val('dataLavratura'), selo: val('selo'), livro: val('livro'), folhas: formatarFolhas(val('folhas')), codigo: val('codigo'),
       base: lerValor(val('base')), emolumentos: lerValor(val('emolumentos')), rural: $('ed_rural').checked,
       recebido: $('ed_recebido').checked, dataRecebimento: val('dataRecebimento'), valorRecebido: lerValor(val('valorRecebido')), obs: val('obs')
     });
@@ -254,30 +276,41 @@ const Esc = {
     } catch (e) { box.innerHTML = `<div class="aviso">${esc(e.message)}</div>`; }
   },
 
-  // Salva os arquivos na subpasta: imagens são convertidas em PDF; PDF e Word vão como estão.
+  // Salva os arquivos na subpasta, sempre em PDF: cada documento vira um PDF próprio, e os arquivos
+  // do mesmo documento (RG frente e verso, páginas de uma certidão, foto + PDF) são unificados num só.
+  // Vale igual para escrituras e procurações. Word/Excel e HEIC vão como estão, com aviso.
   async enviarDocs(r, sp, arquivos) {
     if (!arquivos.length) return;
-    let juntar = null;
-    const imagens = arquivos.filter(f => /^image\/(jpeg|png|webp|gif)$/.test(f.type));
-    if (imagens.length > 1) juntar = await pedir('Imagens', `Juntar as ${imagens.length} imagens em um único PDF? (ex.: RG frente e verso)`,
-      [{ id: 'nome', rotulo: 'Nome do PDF', valor: imagens[0].name.replace(/\.[^.]+$/, '') }], ['Juntar em um PDF', 'Um PDF por imagem']);
+    const ehImg = f => /^image\/(jpeg|png|webp|gif)$/.test(f.type), ehPdf = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+    const conv = arquivos.filter(f => ehImg(f) || ehPdf(f)), outros = arquivos.filter(f => !conv.includes(f));
+    let nomesDoc = conv.map(f => sugerirNomeDoc(f.name));
+    if (conv.length > 1) {
+      const resp = await pedir('Organizar documentos',
+        'Cada nome vira um PDF. Arquivos com o MESMO nome são unificados num só PDF (ex.: RG frente e verso); nomes diferentes ficam separados.',
+        conv.map((f, i) => ({ id: 'd' + i, rotulo: f.name, valor: nomesDoc[i] })), ['Salvar em PDF', 'Cancelar']);
+      if (!resp) return;
+      nomesDoc = conv.map((f, i) => nomePasta(resp['d' + i] || nomesDoc[i]) || nomesDoc[i]);
+    }
+    // Agrupa pelo nome, mantendo a ordem em que os documentos apareceram.
+    const grupos = new Map();
+    conv.forEach((f, i) => { if (!grupos.has(nomesDoc[i])) grupos.set(nomesDoc[i], []); grupos.get(nomesDoc[i]).push(f); });
     const nomes = new Set((await Nuvem.listar(sp.id)).map(f => f.nome));
-    let n = 0, avisos = [];
+    let n = 0, unificados = 0;
+    const avisos = [];
     try {
-      if (juntar) {
-        const f = await Nuvem.enviar(sp.id, nomePasta(juntar.nome || 'DOCUMENTOS') + '.pdf', await imagensParaPDF(imagens), nomes);
+      for (const [nomeDoc, fs] of grupos) {
+        fs.sort((a, b) => a.name.localeCompare(b.name, 'pt', { numeric: true }));
+        const f = await Nuvem.enviar(sp.id, nomeDoc + '.pdf', await arquivosParaPDF(fs), nomes);
+        nomes.add(f.nome); n++;
+        if (fs.length > 1) unificados++;
+      }
+      for (const arq of outros) {
+        if (/heic|heif/i.test(arq.type + arq.name)) avisos.push(arq.name + ' (HEIC: tire a foto em JPG ou envie pelo celular como "compatível")');
+        else avisos.push(arq.name);
+        const f = await Nuvem.enviar(sp.id, arq.name, arq, nomes);
         nomes.add(f.nome); n++;
       }
-      for (const arq of arquivos) {
-        if (juntar && imagens.includes(arq)) continue;
-        let blob = arq, nomeArq = arq.name;
-        if (imagens.includes(arq)) { blob = await imagensParaPDF([arq]); nomeArq = arq.name.replace(/\.[^.]+$/, '') + '.pdf'; }
-        else if (/\.(docx?|xlsx?)$/i.test(arq.name)) avisos.push(arq.name);
-        else if (/heic|heif/i.test(arq.type + arq.name)) avisos.push(arq.name + ' (HEIC: tire a foto em JPG ou envie pelo celular como "compatível")');
-        const f = await Nuvem.enviar(sp.id, nomeArq, blob, nomes);
-        nomes.add(f.nome); n++;
-      }
-      aviso(`${n} arquivo(s) salvo(s) em ${sp.nome}.`);
+      aviso(`${n} arquivo(s) salvo(s) em ${sp.nome}` + (unificados ? ` (${unificados} unificado(s) a partir de várias páginas)` : '') + '.');
       if (avisos.length) aviso('Enviados sem converter para PDF: ' + avisos.join(', '), 'erro');
     } catch (e) { aviso(e.message, 'erro'); }
     this.carregarDocs(r);
@@ -301,8 +334,9 @@ const Esc = {
     const cents = x => x === '' || x == null ? null : Math.round(Number(x) * 100);
     const atual = new Map((await DB.todos('escrituras')).map(r => [r.id, r]));
     const mudadas = new Map();
-    const preencher = (id, dados) => {
-      const r = mudadas.get(id) || atual.get(id) || { id, criadoEm: agora() };
+    const preencher = (chave, dados) => {
+      const id = this.idEsc(...chave.split(/\/(.*)/s).slice(0, 2));
+      const r = mudadas.get(id) || atual.get(id) || { id, cartorioId: CFG.cartorioAtual, criadoEm: agora() };
       let mudou = !atual.has(id);
       for (const [k, v] of Object.entries(dados)) if ((r[k] === undefined || r[k] === '' || r[k] === null) && v !== '' && v != null) { r[k] = v; mudou = true; }
       if (mudou) { r.atualizadoEm = agora(); mudadas.set(id, r); }
@@ -335,7 +369,9 @@ const Esc = {
   iniciar() {
     ['escBusca', 'escParceiro', 'escSituacao'].forEach(i => $(i).addEventListener('input', () => this.render()));
     $('escLista').addEventListener('click', ev => { const it = ev.target.closest('[data-esc]'); if (it) this.detalhe(it.dataset.esc); });
+    $('escTipo').addEventListener('input', () => this.render());
     $('escNova').onclick = () => this.nova();
+    $('escNovaProc').onclick = () => this.nova('PROCURAÇÃO PÚBLICA');
     $('escAtualizar').onclick = async () => {
       const b = $('escAtualizar'); b.disabled = true; b.textContent = 'Lendo o Drive…';
       try { const n = await this.escanear(); aviso(n ? `${n} escritura(s) atualizada(s).` : 'Tudo em dia com o Drive.'); App.atualizarTudo(); }
@@ -348,6 +384,37 @@ const Esc = {
     };
   }
 };
+
+// Nome sugerido para o documento: tira extensão, "frente/verso" e numeração de página,
+// para que as partes do mesmo documento saiam com o mesmo nome. Nomes genéricos de câmera ficam como estão.
+function sugerirNomeDoc(arquivo) {
+  const base = arquivo.replace(/\.[^.]+$/, '');
+  if (/^(whatsapp|img|image|dsc|pxl|scan|foto|photo|screenshot|captura)/i.test(base)) return nomePasta(base);
+  const limpo = base.replace(/[_]+/g, ' ')
+    .replace(/\b(frente|verso|front|back|anverso)\b/gi, ' ')
+    .replace(/\b(p[aá]g(ina)?|parte|fls?|folha)\s*\d+\b/gi, ' ')
+    .replace(/\s*\(\d+\)\s*$|[\s-]+\d{1,2}\s*$/, '')
+    .replace(/[\s-]+$/, '').replace(/\s+/g, ' ').trim();
+  return nomePasta(limpo || base);
+}
+
+// Junta imagens e PDFs, na ordem dada, num único PDF (imagens em página A4).
+async function arquivosParaPDF(arquivos) {
+  const ehImg = f => /^image\//.test(f.type);
+  if (arquivos.every(ehImg)) return imagensParaPDF(arquivos);
+  if (arquivos.length === 1) return arquivos[0];
+  await carregarScript(LIB.pdflib);
+  const { PDFDocument } = window.PDFLib;
+  const saida = await PDFDocument.create();
+  for (const f of arquivos) {
+    const bytes = await (ehImg(f) ? await imagensParaPDF([f]) : f).arrayBuffer();
+    let origem;
+    try { origem = await PDFDocument.load(bytes, { ignoreEncryption: true }); }
+    catch { throw new Error('PDF ilegível ou protegido: ' + f.name); }
+    (await saida.copyPages(origem, origem.getPageIndices())).forEach(p => saida.addPage(p));
+  }
+  return new Blob([await saida.save()], { type: 'application/pdf' });
+}
 
 // Converte imagens em um PDF A4 (uma imagem por página, centralizada).
 async function imagensParaPDF(arquivos) {

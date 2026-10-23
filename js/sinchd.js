@@ -30,7 +30,7 @@ const SincHD = {
 
   // Acompanha MINUTA -> LAVRADA nos dois sentidos antes de comparar arquivos.
   async acertarLavradas() {
-    for (const parcHD of await HD.subpastas(HD.pastas.raiz)) {
+    for (const parcHD of await HD.subpastas(HD.raiz)) {
       const parcDrive = (await Nuvem.buscarNome(parcHD.name, Pastas.raiz, true))[0];
       if (!parcDrive) continue;
       const hd = new Map((await HD.subpastas(parcHD)).map(h => [h.name, h]));
@@ -60,7 +60,7 @@ const SincHD = {
 
   async rodar() {
     if (this.rodando) return;
-    if (!await HD.liberada('raiz', true)) return aviso('Escolha a pasta ESCRITURAS ORGANIZADAS do HD em Ajustes.', 'erro');
+    if (!await HD.liberada(HD.chave(), true)) return aviso(`Escolha a pasta ${C().pasta} do HD em Ajustes.`, 'erro');
     this.rodando = true; this.parar = false;
     const b = $('ajSincHD'); b.textContent = 'Parar'; b.onclick = () => { this.parar = true; };
     let enviados = 0, baixados = 0, diferentes = 0, erros = 0;
@@ -69,7 +69,7 @@ const SincHD = {
       this.log('Conferindo pastas MINUTA/LAVRADA…');
       await this.acertarLavradas();
       this.log('Lendo o HD…');
-      const hd = await this.arvoreHD(HD.pastas.raiz, '', new Map());
+      const hd = await this.arvoreHD(HD.raiz, '', new Map());
       this.log(`HD: ${hd.size} itens. Lendo o Drive…`);
       const dr = await this.arvoreDrive(Pastas.raiz, '', new Map());
       this.log(`Drive: ${dr.size} itens. Comparando…`);
@@ -83,7 +83,7 @@ const SincHD = {
         idPasta.set(caminho, nova.id); return nova.id;
       };
       const pastaHD = async caminho => {
-        let d = HD.pastas.raiz;
+        let d = HD.raiz;
         for (const p of caminho.split('/').filter(Boolean)) d = await d.getDirectoryHandle(p, { create: true });
         return d;
       };

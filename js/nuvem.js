@@ -203,18 +203,20 @@ let Nuvem = Demo;
 const SUBPASTAS = ['01 - MINUTA', '02 - ESCRITURA LAVRADA (COM SELO)', '03 - DOCUMENTOS', '04 - ORCAMENTOS'];
 const RE_ESCRITURA = /^(MINUTA|LAVRADA) - (.+)$/i;
 
-// Pasta raiz das escrituras e pasta de dados do app.
+// Pasta raiz das escrituras (uma por cartório) e pasta de dados do app (comum).
 const Pastas = {
-  raiz: null, app: null,
+  raizes: {}, app: null,
+  get raiz() { return this.raizes[CFG.cartorioAtual]; },
   async preparar() {
-    if (!this.raiz) {
-      if (CFG.raizId && Nuvem === Drive) this.raiz = CFG.raizId;
+    const c = C();
+    if (!this.raizes[c.id]) {
+      if (c.raizId && Nuvem === Drive) this.raizes[c.id] = c.raizId;
       else {
-        const achadas = await Nuvem.buscarNome('ESCRITURAS ORGANIZADAS', null, true);
-        this.raiz = achadas[0] ? achadas[0].id : (await Nuvem.criarPasta('ESCRITURAS ORGANIZADAS', 'root')).id;
+        const achadas = await Nuvem.buscarNome(c.pasta, null, true);
+        this.raizes[c.id] = achadas[0] ? achadas[0].id : (await Nuvem.criarPasta(c.pasta, 'root')).id;
       }
     }
     if (!this.app) this.app = (await Nuvem.acharOuCriarPasta('NOTARIUS', 'root')).id;
   },
-  zerar() { this.raiz = null; this.app = null; }
+  zerar() { this.raizes = {}; this.app = null; }
 };

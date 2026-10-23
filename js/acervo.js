@@ -21,7 +21,7 @@ const Acv = {
     const termo = $('acvBusca').value.trim();
     if (!termo) return;
     const q = semAcento(termo).toLowerCase(), dig = termo.replace(/\D/g, '');
-    const todas = await Reg.todos('escrituras');
+    const todas = await Reg.doCartorio('escrituras');
     const achadas = todas.filter(r => {
       const t = semAcento([r.nome, r.outorgantes, r.outorgados, r.imovel, r.selo, r.livro, r.folhas, r.parceiro, r.obs, r.natureza].join(' ')).toLowerCase();
       return t.includes(q) || (dig.length >= 4 && t.replace(/\D/g, '').includes(dig));

@@ -4,9 +4,14 @@
 const HD = {
   pastas: { raiz: null, backup: null, sync: null },
 
+  // Pasta de escrituras do cartório atual no HD (Bujaru continua usando a chave "raiz").
+  chave() { return CFG.cartorioAtual === 'bujaru' ? 'raiz' : 'raiz_' + CFG.cartorioAtual; },
+  get raiz() { return this.pastas[this.chave()] || null; },
+
   async carregar() {
     if (NO_CELULAR) return;
-    for (const k of Object.keys(this.pastas)) this.pastas[k] = await DB.get('kv', 'hd_' + k) || null;
+    const chaves = ['raiz', 'backup', 'sync', ...CFG.cartorios.filter(c => c.id !== 'bujaru').map(c => 'raiz_' + c.id)];
+    for (const k of chaves) this.pastas[k] = await DB.get('kv', 'hd_' + k) || null;
   },
 
   // Pede permissão de leitura e escrita; só pode pedir em resposta a um clique.
@@ -48,7 +53,7 @@ const HD = {
   },
 
   async abrir(partes, criar = false) {
-    let d = this.pastas.raiz;
+    let d = this.raiz;
     for (const p of partes) d = await d.getDirectoryHandle(p, { create: criar });
     return d;
   },

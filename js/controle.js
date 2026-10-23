@@ -1,11 +1,13 @@
 // Controle financeiro: arrecadação por mês, valores a receber de clientes e
-// repasse ao Cartório de Santana (percentual sobre os emolumentos, vence todo dia 5 do mês seguinte).
+// repasse do cartório escolhido (percentual sobre os emolumentos, vence todo dia 5 do mês seguinte).
 
 const Ctl = {
-  repasse: e => Math.round((e.emolumentos || 0) * (CFG.repassePct || 0) / 100),
+  // Procuração não entra no repasse (só escrituras com valor).
+  repasse: e => /PROCURA/i.test(e.natureza || e.nome || '') ? 0 : Math.round((e.emolumentos || 0) * (Number(C().repassePct) || 0) / 100),
+  destino: () => C().repasseDestino ? 'ao ' + C().repasseDestino : '',
 
   async dados() {
-    const todas = await Reg.todos('escrituras');
+    const todas = await Reg.doCartorio('escrituras');
     const lavradas = todas.filter(e => e.situacao === 'LAVRADA' && e.dataLavratura && e.emolumentos);
     return { todas, lavradas };
   },
@@ -24,7 +26,7 @@ const Ctl = {
     const venc = `${mesSeguinte(mes)}-05`;
     $('ctlKpis').innerHTML = `
       <div class="kpi destaque"><small>Emolumentos de ${nomeMes(mes)}</small><b>R$ ${brl(emolMes)}</b><span>${doMes.length} lavrada(s)</span></div>
-      <div class="kpi"><small>Repasse ao Cartório de Santana (${CFG.repassePct}%)</small><b>R$ ${brl(repMes)}</b><span>vence ${dataBR(venc)}${CFG.repassesPagos[mes] ? ' · pago' : ''}</span></div>
+      <div class="kpi"><small>Repasse ${this.destino()} (${C().repassePct || 0}%)</small><b>R$ ${brl(repMes)}</b><span>vence ${dataBR(venc)}${CFG.repassesPagos[chaveRepasse(mes)] ? ' · pago' : ''}</span></div>
       <div class="kpi"><small>Saldo após repasse</small><b>R$ ${brl(emolMes - repMes)}</b><span>${nomeMes(mes)}</span></div>
       <div class="kpi"><small>A receber de clientes</small><b>R$ ${brl(soma(aReceber, e => e.emolumentos))}</b><span>${aReceber.length} escritura(s)</span></div>`;
 
@@ -40,7 +42,7 @@ const Ctl = {
     const meses = Object.keys(porMes).sort().reverse().slice(0, 18);
     $('ctlRepasse').innerHTML = `<thead><tr><th>Competência</th><th>Vencimento</th><th class="n">Qtd.</th><th class="n">Repasse</th><th>Situação</th></tr></thead><tbody>` +
       (meses.map(m => {
-        const pago = CFG.repassesPagos[m];
+        const pago = CFG.repassesPagos[chaveRepasse(m)];
         return `<tr><td>${nomeMes(m)}</td><td>${dataBR(mesSeguinte(m) + '-05')}</td><td class="n">${porMes[m].length}</td><td class="n">${brl(soma(porMes[m], e => this.repasse(e)))}</td>
           <td>${pago ? `<span class="selo pago">PAGO ${dataBR(pago)}</span>` : `<button class="peq" data-pagar="${m}">Marcar pago</button>`}</td></tr>`;
       }).join('') || '<tr><td colspan="5" class="vazio">Sem lavraturas com valor.</td></tr>') + '</tbody>';
@@ -66,10 +68,10 @@ const Ctl = {
       const t = ev.target.closest('[data-esc]'); if (t) return Esc.detalhe(t.dataset.esc);
       const p = ev.target.closest('[data-pagar]');
       if (p) {
-        const d = await pedir('Repasse pago', `Repasse de ${nomeMes(p.dataset.pagar)} ao Cartório de Santana.`,
+        const d = await pedir('Repasse pago', `Repasse de ${nomeMes(p.dataset.pagar)} ${this.destino()}.`,
           [{ id: 'data', rotulo: 'Data do pagamento', tipo: 'date', valor: hojeISO() }], ['Marcar pago', 'Cancelar']);
         if (!d) return;
-        await Reg.salvarCfg({ repassesPagos: { ...CFG.repassesPagos, [p.dataset.pagar]: d.data || hojeISO() } });
+        await Reg.salvarCfg({ repassesPagos: { ...CFG.repassesPagos, [chaveRepasse(p.dataset.pagar)]: d.data || hojeISO() } });
         this.render();
       }
     });

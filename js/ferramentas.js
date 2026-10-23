@@ -20,8 +20,8 @@ const TIPOS = [
   { id: 'escMaritimo', nome: 'Escritura – Contratos Marítimos', tabela: 'Tabela IV – IV', faixa: true }
 ];
 
-// Atos adicionais que podem ser marcados junto com o ato principal.
-const AVULSOS = [
+// Atos adicionais que podem ser marcados junto com o ato principal (tabela do Pará).
+const AVULSOS_PA = [
   { cod: '695', nome: 'Diligência' },
   { cod: '453', nome: 'Certidão de inteiro teor da matrícula (atualizada)' },
   { cod: '456', nome: 'Certidão de inteiro teor com ônus e ações (atualizada)' },
@@ -29,21 +29,28 @@ const AVULSOS = [
   { cod: '678', nome: 'Certidão de escritura (atualizada)' },
   { cod: '698', nome: 'Certidão de procuração (atualizada)' }
 ];
+// Em tabela importada, os avulsos são os itens do grupo "avulsos" da própria tabela.
+const listaAvulsos = () => C().tabela === 'PA2026' ? AVULSOS_PA : (TAB()?.avulsos || []).map(r => ({ cod: r.cod, nome: r.desc }));
 
 function tipoAtual() { return TIPOS.find(t => t.id === $('tipo').value); }
-function porCodigo(lista, cod) { return lista.find(r => r.cod === cod); }
+function porCodigo(lista, cod) { return (lista || []).find(r => r.cod === cod); }
 function acharFaixa(lista, c) { return lista.find(r => r.de !== null && c >= r.de && (r.ate === null || c <= r.ate)); }
 
-function montarTipos() { $('tipo').innerHTML = TIPOS.map(t => `<option value="${t.id}">${t.nome} (${t.tabela})</option>`).join(''); }
+function montarTipos() {
+  const tab = TAB();
+  const tipos = tab ? TIPOS.filter(t => (tab[t.id] || []).length) : [];
+  $('tipo').innerHTML = tipos.map(t => `<option value="${t.id}">${t.nome}${C().tabela === 'PA2026' ? ` (${t.tabela})` : ''}</option>`).join('');
+}
 
 function montarAvulsos() {
-  $('avulsos').innerHTML = AVULSOS.map(a => {
-    const r = porCodigo(DADOS.avulsos, a.cod);
+  const lista = listaAvulsos();
+  $('avulsos').innerHTML = lista.map(a => {
+    const r = porCodigo(TAB().avulsos, a.cod);
     return `<label class="avulso"><input type="checkbox" id="av_${a.cod}">
-      <span>${a.nome} <small>cód. ${a.cod} – R$ ${brl(r.total)}</small></span>
+      <span>${esc(a.nome)} <small>cód. ${a.cod} – R$ ${brl(r.total)}</small></span>
       <input type="number" id="avq_${a.cod}" min="1" step="1" value="1" title="Quantidade"></label>`;
-  }).join('');
-  AVULSOS.forEach(a => {
+  }).join('') || '<div class="hint">Esta tabela não tem atos adicionais.</div>';
+  lista.forEach(a => {
     $('av_' + a.cod).addEventListener('change', calcular);
     $('avq_' + a.cod).addEventListener('input', () => { if (+$('avq_' + a.cod).value > 0) $('av_' + a.cod).checked = true; calcular(); });
   });
@@ -51,10 +58,11 @@ function montarAvulsos() {
 
 function montarItens() {
   const t = tipoAtual();
+  if (!t) { ['blocoValor', 'blocoItem', 'blocoQtd', 'detFaixas'].forEach(i => $(i).classList.add('hidden')); return; }
   $('blocoValor').classList.toggle('hidden', !t.faixa);
   $('blocoItem').classList.toggle('hidden', t.faixa);
   if (!t.faixa) {
-    const itens = DADOS[t.id].filter(r => !(t.excluir || []).includes(r.cod));
+    const itens = TAB()[t.id].filter(r => !(t.excluir || []).includes(r.cod));
     $('item').innerHTML = itens.map(r => `<option value="${r.cod}">${r.cod} – ${r.desc}</option>`).join('');
   }
   $('qtd').value = 0;
@@ -63,7 +71,7 @@ function montarItens() {
 }
 
 function atualizarQtd() {
-  const ad = tipoAtual().adicional;
+  const ad = tipoAtual()?.adicional;
   const mostra = ad && (!ad.item || $('item').value === ad.item);
   $('blocoQtd').classList.toggle('hidden', !mostra);
   if (mostra) $('qtdLabel').textContent = ad.label;
@@ -71,10 +79,10 @@ function atualizarQtd() {
 
 function montarFaixas(atual) {
   const t = tipoAtual();
-  $('detFaixas').classList.toggle('hidden', !t.faixa);
-  if (!t.faixa) return;
+  $('detFaixas').classList.toggle('hidden', !t || !t.faixa);
+  if (!t || !t.faixa) return;
   $('faixas').innerHTML = '<table><thead><tr><th>Código</th><th>Faixa (R$)</th><th>Emolumentos</th><th>Selo</th><th>ISS</th><th>Total</th></tr></thead><tbody>' +
-    DADOS[t.id].map(r => `<tr class="${atual && r.cod === atual.cod ? 'atual' : ''}"><td>${r.cod}</td><td>${r.desc}</td><td>${brl(r.emol)}</td><td>${brl(r.selo)}</td><td>${brl(r.iss)}</td><td>${brl(r.total)}</td></tr>`).join('') +
+    TAB()[t.id].map(r => `<tr class="${atual && r.cod === atual.cod ? 'atual' : ''}"><td>${r.cod}</td><td>${r.desc}</td><td>${brl(r.emol)}</td><td>${brl(r.selo)}</td><td>${brl(r.iss)}</td><td>${brl(r.total)}</td></tr>`).join('') +
     '</tbody></table>';
 }
 
@@ -82,7 +90,8 @@ let resumoTexto = '';
 
 function calcular() {
   const t = tipoAtual();
-  const lista = DADOS[t.id];
+  if (!t) { $('saida').innerHTML = '<div class="vazio">A tabela de emolumentos deste cartório ainda não foi importada (Ajustes → Cartório).</div>'; resumoTexto = ''; return; }
+  const lista = TAB()[t.id];
   let linha, valor = null;
 
   if (t.faixa) {
@@ -112,7 +121,7 @@ function calcular() {
   const emol = emolBase + acresc;
   const fundos = (linha.frc || 0) + (linha.frj || 0);
   const selo = linha.selo;
-  const iss = pct(emol, 5);
+  const iss = issDe(emol);
   let total = emol + fundos + selo + iss;
 
   const linhas = [];
@@ -122,31 +131,32 @@ function calcular() {
   if (linha.frc) linhas.push(['FRC', linha.frc]);
   if (linha.frj) linhas.push(['FRJ', linha.frj]);
   linhas.push(['Selo', selo]);
-  linhas.push(['ISS (5%)', iss]);
+  linhas.push([`ISS (${C().issPct ?? 5}%)`, iss]);
   linhas.push(['Subtotal do ato', emol + fundos + selo + iss, 'grupo']);
 
   const ad = t.adicional;
   const qtd = Math.max(0, parseInt($('qtd').value, 10) || 0);
-  if (ad && (!ad.item || linha.cod === ad.item) && qtd > 0) {
-    const r = porCodigo(lista, ad.cod);
-    const sub = (r.emol + r.selo + pct(r.emol, 5)) * qtd;
-    linhas.push([`${ad.label}: ${qtd} × cód. ${r.cod} (R$ ${brl(r.total)})`, sub, 'sub']);
+  const adR = ad && porCodigo(lista, ad.cod);
+  if (adR && (!ad.item || linha.cod === ad.item) && qtd > 0) {
+    const sub = (adR.emol + adR.selo + issDe(adR.emol)) * qtd;
+    linhas.push([`${ad.label}: ${qtd} × cód. ${adR.cod} (R$ ${brl(adR.total)})`, sub, 'sub']);
     total += sub;
   }
 
   let temAvulso = false;
-  AVULSOS.forEach(a => {
-    if (!$('av_' + a.cod).checked) return;
+  listaAvulsos().forEach(a => {
+    if (!$('av_' + a.cod) || !$('av_' + a.cod).checked) return;
     const q = Math.max(1, parseInt($('avq_' + a.cod).value, 10) || 1);
-    const r = porCodigo(DADOS.avulsos, a.cod);
+    const r = porCodigo(TAB().avulsos, a.cod);
     if (!temAvulso) { linhas.push(['Atos adicionais', null, 'grupo']); temAvulso = true; }
-    const sub = (r.emol + (r.frc || 0) + (r.frj || 0) + r.selo + pct(r.emol, 5)) * q;
+    const sub = (r.emol + (r.frc || 0) + (r.frj || 0) + (r.selo || 0) + issDe(r.emol)) * q;
     linhas.push([`${a.nome}: ${q} × cód. ${r.cod} (R$ ${brl(r.total)})`, sub, 'sub']);
     total += sub;
   });
 
   const faixaTxt = t.faixa && !/^A partir/.test(linha.desc) ? `Faixa ${linha.desc}` : linha.desc;
-  let html = `<div class="codigo"><div><div class="hint">Código</div><b>${linha.cod}</b></div><small>${t.tabela}<br>${faixaTxt}</small></div>`;
+  const nomeTab = C().tabela === 'PA2026' ? t.tabela : esc(TAB().nome || 'Tabela importada');
+  let html = `<div class="codigo"><div><div class="hint">Código</div><b>${linha.cod}</b></div><small>${nomeTab}<br>${faixaTxt}</small></div>`;
   if (t.faixa) html += `<div class="hint" style="margin-bottom:8px">Valor informado: R$ ${brl(valor)}</div>`;
   html += '<table class="res">' + linhas.map(([n, v, cls]) =>
     `<tr class="${cls || ''}"><td>${n}</td><td>${v === null ? '' : 'R$ ' + brl(v)}</td></tr>`).join('') +
@@ -156,7 +166,7 @@ function calcular() {
   $('saida').innerHTML = html;
 
   resumoTexto = [
-    `${t.nome} (${t.tabela})`,
+    `${C().nome} – ${t.nome} (${nomeTab})`,
     t.faixa ? `Valor: R$ ${brl(valor)}` : null,
     `Código ${linha.cod} – ${faixaTxt}`,
     ...linhas.filter(l => l[1] !== null).map(([n, v]) => `${n}: R$ ${brl(v)}`),
@@ -168,6 +178,34 @@ function calcular() {
 function listaDocumentos(m, imovel, op) {
   const S = [];
   const add = (titulo, itens) => S.push({ titulo, itens: itens.filter(Boolean) });
+  if (m === 'procuracao') {
+    add('Mandante (quem outorga)', [
+      'RG e CPF, ou CNH, originais – o mandante comparece pessoalmente',
+      'Estado civil: certidão de nascimento ou de casamento (para procuração que envolva imóvel, atualizada até 90 dias)',
+      op.casados && 'Para vender ou gravar imóvel: o cônjuge também outorga ou dá anuência (art. 1.647 do Código Civil), salvo separação total de bens',
+      'Comprovante de endereço e profissão',
+      op.menor && 'Menor de 16 anos: representado pelos pais; entre 16 e 18 anos: comparece assistido pelos pais'
+    ]);
+    if (op.pj) add('Pessoa jurídica mandante', [
+      'Contrato social ou estatuto consolidado e última alteração', 'Certidão simplificada da JUCEPA (até 30 dias)', 'Cartão CNPJ',
+      'Documentos pessoais do sócio administrador que assina'
+    ]);
+    add('Procurador (não precisa comparecer)', [
+      'Nome completo, nacionalidade, estado civil, profissão, RG, CPF e endereço – de preferência cópia dos documentos'
+    ]);
+    add('Conforme a finalidade', [
+      'Imóvel: certidão de inteiro teor da matrícula (para descrever o bem com matrícula e cartório)' + (imovel === 'rural' ? ', CCIR e recibo do CAR' : ''),
+      'Previdenciária (INSS): número do benefício (NB) e banco/agência de pagamento; validade máxima de 12 meses (art. 109 da Lei 8.213/1991)',
+      'Previdenciária: atestado médico ou declaração do motivo (ausência, doença ou dificuldade de locomoção), exigido pelo INSS para cadastrar o procurador',
+      'Bancos: nome do banco, agência e conta, quando os poderes forem para uma conta específica'
+    ]);
+    add('Se o mandante não souber ou não puder assinar', [
+      'Pessoa que assina a rogo: RG e CPF, ou CNH, e endereço (art. 215, § 2º, do Código Civil)',
+      'Duas testemunhas: RG e CPF, ou CNH, e endereço'
+    ]);
+    add('Feito pelo cartório', ['Comunicação à CENSEC (arts. 264 e seguintes do Código Nacional de Normas)']);
+    return S;
+  }
   const partes = { cv: 'Vendedores e compradores', dacao: 'Devedor e credor', inventario: 'Herdeiros, cônjuge/companheiro sobrevivente e cessionários', divorcio: 'Divorciandos' }[m];
   add(partes + ' (pessoas físicas)', [
     'RG e CPF, ou CNH, originais – de todos os comparecentes e cônjuges',
@@ -239,13 +277,13 @@ function listaDocumentos(m, imovel, op) {
   return S;
 }
 
-const NOMES_MODAL = { cv: 'Compra e venda', inventario: 'Inventário e partilha', divorcio: 'Divórcio consensual com partilha', dacao: 'Dação em pagamento' };
+const NOMES_MODAL = { cv: 'Compra e venda', inventario: 'Inventário e partilha', divorcio: 'Divórcio consensual com partilha', dacao: 'Dação em pagamento', procuracao: 'Procuração pública' };
 const opcoesChecklist = () => ({ casados: $('cCasados').checked, pj: $('cPJ').checked, proc: $('cProc').checked, cond: $('cCond').checked, menor: $('cMenor').checked });
 
 function montarChecklist() {
   const m = $('cModal').value, imovel = $('cImovel').value;
   const secs = listaDocumentos(m, imovel, opcoesChecklist());
-  $('cTitulo').textContent = `Documentos – ${NOMES_MODAL[m]} – imóvel ${imovel}`;
+  $('cTitulo').textContent = `Documentos – ${NOMES_MODAL[m]}` + (m === 'procuracao' ? '' : ` – imóvel ${imovel}`);
   $('cLista').innerHTML = secs.map((s, i) => `<div class="chk-sec"><h4>${s.titulo}</h4>` +
     s.itens.map((it, j) => `<label><input type="checkbox" id="ck${i}_${j}"><span>${it}</span></label>`).join('') + '</div>').join('');
 }
@@ -349,6 +387,7 @@ function contexto() {
     c.rFal = c.Fal.g === 'F' ? 'AUTORA DA HERANÇA' : 'AUTOR DA HERANÇA';
   }
   if (m === 'divorcio') { c.A = grupo('m_aNomes', 'M', true); c.rA = 'DIVORCIANDO'; }
+  if (m === 'procuracao') { c.A = grupo('m_aNomes', v('m_aGen')); c.rA = 'MANDANTE'; c.B = grupo('m_bNomes', v('m_bGen')); c.rB = 'MANDATÁRIO'; }
   c.prop = m === 'inventario' ? [c.Fal, c.rFal] : [c.A, c.rA];
   c.adq = m === 'cv' || m === 'dacao' ? [c.B, c.rB] : [c.A, c.rA];
   return c;
@@ -546,6 +585,90 @@ function itensDivorcio(c) {
     : [...partes, ...meio, itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c, averb)];
 }
 
+/* Procuração pública – modelo da serventia (procurações lavradas em 2026), com as citações atualizadas.
+   Só o mandante assina com o tabelião; o procurador não comparece. */
+const PODERES_PROC = {
+  // {P} vira "PODENDO" na redação tradicional e "com poderes para" na revisada (sem gerúndio).
+  imovel: (c, bem) => `para assuntos relacionados à administração, locação, regularização, alienação e transferência, para si ou para quem indicar, do seguinte bem: //“${bem}”//, com a finalidade de representação perante os órgãos públicos da situação do referido imóvel, especialmente a Prefeitura Municipal e suas Secretarias Municipais, {P} requerer, solicitar e protocolar quaisquer documentos, proceder a cadastros, recadastramentos e/ou alteração da inscrição do referido imóvel, solicitar alvarás de construção e de funcionamento, efetuar o pagamento de quaisquer tributos e taxas, em especial o Imposto Predial e Territorial Urbano – IPTU${c.rural ? ', o Imposto sobre a Propriedade Territorial Rural – ITR' : ''} e o Imposto de Transmissão de Bens Imóveis – ITBI; ` +
+    (c.rural ? 'representar perante o Instituto Nacional de Colonização e Reforma Agrária – INCRA, a Receita Federal do Brasil, o Instituto de Terras do Pará – ITERPA e a Secretaria de Estado de Meio Ambiente e Sustentabilidade – SEMAS, {P} atualizar o Certificado de Cadastro de Imóvel Rural – CCIR, o Cadastro Imobiliário Brasileiro – CIB/NIRF e o Cadastro Ambiental Rural – CAR, e requerer georreferenciamento e certificação no SIGEF; ' : '') +
+    'representar perante Cartórios de Notas em geral, bem como perante o Serviço de Registro de Imóveis competente, com poderes especiais e expressos, nos termos do §1º, do art. 661, do Código Civil, {P} juntar, apresentar, requerer e retirar documentos, prestar declarações e esclarecimentos, solicitar e assinar **ESCRITURAS PÚBLICAS** de qualquer natureza, inclusive de compra e venda, pelo preço e nas condições que ajustar, bem como solicitar aditamentos e assinar rerratificações, decidir sobre quaisquer cláusulas, efetuar pagamentos, quitar débitos em geral e receber quitações, pagar emolumentos e taxas, requerer e assinar recibos, transmitir definitivamente toda a posse, domínio, direito e ação sobre o imóvel descrito acima, responder pela evicção, receber quaisquer valores referentes à referida transmissão e dar quitação, solicitar, requerer e assinar pedidos de prenotação, registro, averbação e anotações, tomar ciência dos despachos, cumprir exigências, requerer eventual abertura de matrícula, desmembramento, unificação, qualificação objetiva e/ou subjetiva, bem como suscitar dúvidas registrais; representar perante a Equatorial Energia S/A e a Companhia de Saneamento do Pará – COSANPA, ou quem vier a substituí-las, bem como perante companhias telefônicas e de internet em geral, {P} requerer, protocolar, apresentar e assinar quaisquer documentos, solicitar novas ligações e religações, requerer e pagar taxas, dívidas e quaisquer outros valores, realizar renegociações, receber recibos de quitação, efetuar, atualizar, retificar e encerrar cadastros, prestar declarações e esclarecimentos, alterar cláusulas contratuais, encerrar contratos e requerer vistorias e visitas técnicas de qualquer natureza',
+  previdenciaria: c => 'para resolver todos os assuntos de interesse ' + w(c.A, 'do outorgante', 'da outorgante', 'dos outorgantes', 'das outorgantes') + ' referentes aos seus benefícios e vencimentos mensais, perante o **INSTITUTO NACIONAL DO SEGURO SOCIAL – INSS**, instituições financeiras e cooperativas de crédito, casas bancárias, casas lotéricas, farmácias e drogarias, Correios ou qualquer repartição em que se faça necessário, {P} promover, requerer, reclamar, prestar esclarecimentos verbais ou por escrito, apresentar documentos, assinar e receber o cartão magnético ou carnê de pagamento, preencher formulários e guias, desbloquear cartão e senha, receber quantias e dar quitação, assinar contracheque, fazer prova de vida e recadastramento junto ao INSS, solicitar saldos e extratos bancários e receber medicamentos',
+  ampla: c => 'para representação perante quaisquer órgãos e repartições públicas federais, estaduais e municipais, autarquias e concessionárias de serviço público, em especial Prefeituras Municipais e suas Secretarias, Receita Federal do Brasil, Secretaria de Estado da Fazenda – SEFA, Instituto Nacional do Seguro Social – INSS, Departamento de Trânsito – DETRAN e Juntas Comerciais, {P} requerer, juntar, apresentar, retirar e assinar papéis e documentos, prestar declarações e esclarecimentos, acompanhar processos, solicitar certidões, emitir guias e pagar tributos, taxas e quaisquer outros valores, realizar renegociações e parcelamentos e receber quitações; representar perante Cartórios de Notas e de Registro em geral, com poderes especiais e expressos, nos termos do §1º, do art. 661, do Código Civil, {P} assinar escrituras públicas e instrumentos particulares de qualquer natureza, prestar declarações, requerer registros e averbações e cumprir exigências; representar perante instituições financeiras e cooperativas de crédito em geral, {P} abrir, movimentar e encerrar contas correntes e de poupança, receber importâncias, efetuar saques, depósitos e transferências, solicitar saldos e extratos, solicitar e receber cartões, criar e alterar senhas, fazer cadastramento e recadastramento e dar e receber quitação; e constituir advogados, com os poderes das cláusulas //ad judicia et extra//, para representar ' + w(c.A, 'o outorgante', 'a outorgante', 'os outorgantes', 'as outorgantes') + ' em qualquer juízo, instância ou tribunal',
+  outra: () => ''
+};
+
+function itensProcuracao(c) {
+  const { A, B } = c;
+  const MA = `**${w(A, 'MANDANTE', 'MANDANTE', 'MANDANTES', 'MANDANTES')}**`, MT = R([B, 'MANDATÁRIO']);
+  const PR = w(B, 'PROCURADOR', 'PROCURADORA', 'PROCURADORES', 'PROCURADORAS'), seu = w(B, 'seu', 'sua', 'seus', 'suas');
+  const tipo = v('m_procTipo'), extra = v('m_procPoderes');
+  const bem = v('m_procBem') || '[[descrição do imóvel, com matrícula e cartório xxx]]';
+  let poderes = PODERES_PROC[tipo](c, bem);
+  if (tipo === 'outra') poderes = extra || '[[poderes conferidos xxx]]';
+  else if (extra) poderes += '; ' + extra;
+  poderes = poderes.replace(/\{P\}/g, c.trad ? 'PODENDO' : 'com poderes para');
+  const irrev = $('m_procIrrev').checked;
+  const prazo = v('m_procPrazo') || (tipo === 'previdenciaria' ? '12 (doze) meses' : '');
+  const txtPrazo = prazo ? ` O presente mandato terá validade de ${prazo}, contados da data de sua lavratura${tipo === 'previdenciaria' ? ', nos termos do art. 109 da Lei nº 8.213/1991' : ''}.` : '';
+  const subst = v('m_procSubst') === 'sim' ? 'PERMITIDO' : 'VEDADO';
+  const rogo = v('m_procRogo');
+  const qualA = F('m_aQual', 'qualificação completa do mandante'), qualB = F('m_bQual', 'qualificação completa do procurador');
+  const den = (G, r) => `doravante ${w(G, 'denominado', 'denominada', 'denominados', 'denominadas')} ${r}`;
+  const itens = [];
+  if (c.trad) {
+    itens.push({ tt: `${w(A, 'OUTORGANTE', 'OUTORGANTE', 'OUTORGANTES', 'OUTORGANTES')} / ${w(A, 'MANDANTE', 'MANDANTE', 'MANDANTES', 'MANDANTES')}`,
+      x: `${qualA}, ${den(A, MA)}. Documentos arquivados em classificador próprio desta Serventia; que, por este público instrumento, ${vb(A, 'nomeia e constitui', 'nomeiam e constituem')} como ${seu} **${PR}**: ${qualB}, ${den(B, MT)}.` });
+    itens.push({ tt: 'IDENTIDADE E CAPACIDADE', x: `Reconheço a identidade ${art.do(A)} ${MA}, perante os documentos, em originais, apresentados e arquivados em classificador próprio desta Serventia. Reconheço, ainda, a sua capacidade jurídica, mediante as perguntas feitas e as respostas obtidas, estando em perfeito juízo e claro entendimento, segundo o meu parecer, do que **DOU FÉ**.` });
+    itens.push({ tt: 'VONTADE', x: `Então, ${art.pelo(A)} ${MA}, no uso da prerrogativa de livre escolha do Tabelionato de Notas, nos termos do art. 8º, da Lei 8.935/94, me foi dito que é de seu interesse constituir ${art.o(B)} ${MT} como ${seu} ${w(B, 'legítimo', 'legítima', 'legítimos', 'legítimas')} **${PR}**, para praticar e administrar atos de seu interesse, nos termos do art. 653, do Código Civil.` });
+    itens.push({ tt: 'PODERES', x: `Neste ato ${art.o(A)} ${MA} ${vb(A, 'confere', 'conferem')} poderes Gerais, Especiais e Expressos ${art.ao(B)} ${MT}${irrev ? ', para representação em caráter **IRREVOGÁVEL E IRRETRATÁVEL**, nos termos do art. 684 do Código Civil' : ''}, ${poderes}. Enfim, praticar todos os atos necessários para o fiel cumprimento do presente mandato.${txtPrazo}` });
+    itens.push({ tt: 'EFICÁCIA', x: `${cap(art.o(A))} ${MA} ${vb(A, 'presta', 'prestam')} as seguintes declarações: **A)** Que fica **${subst} O SUBSTABELECIMENTO**, parcial ou total, dos poderes constantes do presente mandato; **B)** Que se ${vb(A, 'responsabiliza', 'responsabilizam')} civil e criminalmente pelos dados constantes deste instrumento relativos à qualificação ${art.do(B)} ${MT} e aos poderes outorgados, por serem a exata expressão da verdade; **C)** Que ${vb(A, 'aceita', 'aceitam')} esta procuração em todos os seus termos, por se ${vb(A, 'achar', 'acharem')} de inteiro e pleno acordo, responsabilizando-se por eventuais erros ou omissões de direitos de terceiros, devendo a prova ser exigida diretamente pelos órgãos e pessoas a quem interessar, isentando esta Serventia de quaisquer responsabilidades cíveis, criminais e administrativas.` });
+    itens.push({ tt: 'TRATAMENTO DE DADOS PESSOAIS', x: `${cap(art.o(A))} ${MA} ${vb(A, 'declara', 'declaram')} ciência sobre a publicidade dos dados pessoais descritos neste instrumento, bem como ${vb(A, 'concorda', 'concordam')}, expressamente, com a divulgação de seus dados pessoais, com a finalidade de emissão de certidões, segundas vias, envio aos órgãos fiscalizadores e cumprimento das exigências legais e regimentais, nos termos do art. 7º, inc. II, e do art. 23, §4º, da Lei nº 13.709/2018 – Lei Geral de Proteção de Dados Pessoais, bem como dos arts. 79 e seguintes do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023).` });
+    itens.push({ tt: 'COMUNICAÇÃO', x: 'As informações referentes a esta procuração serão remetidas à Central Notarial de Serviços Eletrônicos Compartilhados – CENSEC, dentro do prazo legal, nos termos dos arts. 264 e seguintes do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023).' });
+    if (rogo) itens.push({ tt: 'ASSINATURA A ROGO', x: `Por não ${vb(A, 'saber ou não poder', 'saberem ou não poderem')} assinar, ${art.o(A)} ${MA} ${vb(A, 'pede', 'pedem')} que assine a seu rogo ${rogo}, nos termos do art. 215, § 2º, do Código Civil.` });
+  } else {
+    itens.push({ tr: `${w(A, 'DO', 'DA', 'DOS', 'DAS')} ${w(A, 'OUTORGANTE MANDANTE', 'OUTORGANTE MANDANTE', 'OUTORGANTES MANDANTES', 'OUTORGANTES MANDANTES')}`, x: `${qualA}, ${den(A, MA)}.` });
+    itens.push({ tr: `${w(B, 'DO', 'DA', 'DOS', 'DAS')} ${w(B, 'OUTORGADO PROCURADOR', 'OUTORGADA PROCURADORA', 'OUTORGADOS PROCURADORES', 'OUTORGADAS PROCURADORAS')}`, x: `${qualB}, ${den(B, MT)}.` });
+    itens.push({ tr: 'DA IDENTIDADE E DA CAPACIDADE', x: `Reconheço a identidade ${art.do(A)} ${MA} pelos documentos originais que me foram apresentados e a sua capacidade jurídica pelas perguntas que ${vb(A, 'lhe', 'lhes')} fiz e pelas respostas que obtive, nos termos do art. 215, § 1º, II, do Código Civil. Os documentos apresentados ficam arquivados em classificador próprio desta Serventia. Dou fé.` });
+    itens.push({ tr: 'DO MANDATO', x: `No exercício da livre escolha do tabelião, assegurada pelo art. 8º da Lei nº 8.935/1994, ${art.o(A)} ${MA} ${vb(A, 'nomeia e constitui', 'nomeiam e constituem')} ${art.o(B)} ${MT} ${seu} bastante ${PR.toLowerCase()}, nos termos dos arts. 653 e seguintes do Código Civil${irrev ? ', em caráter **irrevogável e irretratável**, conforme o art. 684 do Código Civil' : ''}.` });
+    itens.push({ tr: 'DOS PODERES', x: `${cap(art.o(A))} ${MA} ${vb(A, 'confere', 'conferem')} ${art.ao(B)} ${MT} poderes gerais, especiais e expressos, nos termos do art. 661, § 1º, do Código Civil, ${poderes}, e para praticar todos os demais atos necessários ao fiel cumprimento deste mandato.${txtPrazo}` });
+    itens.push({ tr: 'DO SUBSTABELECIMENTO E DA RESPONSABILIDADE', x: `**a)** fica ${subst.toLowerCase()} o substabelecimento, total ou parcial, dos poderes deste mandato; **b)** ${art.o(A)} ${MA} ${vb(A, 'responde', 'respondem')} civil e criminalmente pela exatidão da qualificação ${art.do(B)} ${MT} e pelos poderes outorgados; **c)** ${art.o(A)} ${MA} ${vb(A, 'aceita', 'aceitam')} este instrumento em todos os seus termos e ${vb(A, 'isenta', 'isentam')} esta Serventia de responsabilidade por erros, omissões ou direitos de terceiros não declarados.` });
+    itens.push({ tr: 'DA PROTEÇÃO DE DADOS PESSOAIS', x: `${cap(art.o(A))} ${MA} ${vb(A, 'foi cientificado', 'foram cientificados')} de que os dados pessoais constantes deste ato são públicos e ${vb(A, 'autoriza', 'autorizam')} o seu tratamento para a emissão de certidões e traslados, o envio de informações aos órgãos competentes e o cumprimento das obrigações legais e regulamentares, nos termos do art. 7º, II, e do art. 23, § 4º, da Lei nº 13.709/2018 – Lei Geral de Proteção de Dados Pessoais, e dos arts. 79 e seguintes do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial.` });
+    itens.push({ tr: 'DA COMUNICAÇÃO À CENSEC', x: 'Comunicarei este ato à Central Notarial de Serviços Eletrônicos Compartilhados – CENSEC no prazo legal, conforme os arts. 264 e seguintes do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial.' });
+    if (rogo) itens.push({ tr: 'DA ASSINATURA A ROGO', x: `Como ${art.o(A)} ${MA} não ${vb(A, 'sabe ou não pode', 'sabem ou não podem')} assinar, assina a seu rogo ${rogo}, nos termos do art. 215, § 2º, do Código Civil.` });
+  }
+  return itens;
+}
+
+function gerarProcuracao(c) {
+  const { A, B } = c, ct = C();
+  const MA = w(A, 'MANDANTE', 'MANDANTE', 'MANDANTES', 'MANDANTES'), MT = nome('MANDATÁRIO', B);
+  const titulo = c.trad
+    ? `**PROCURAÇÃO PÚBLICA** QUE ${vb(A, 'FAZ', 'FAZEM')} COMO ${MA} ${nomesTitulo(A)}, E TEM COMO ${MT} ${nomesTitulo(B)}, NA FORMA ABAIXO:`
+    : `**PROCURAÇÃO PÚBLICA** QUE ${vb(A, 'OUTORGA', 'OUTORGAM')}, COMO ${MA}, ${nomesTitulo(A)} ${w(B, 'AO', 'À', 'AOS', 'ÀS')} ${MT} ${nomesTitulo(B)}, NA FORMA ABAIXO:`;
+  const data = dataExtenso(v('m_data')) || '[[data da lavratura por extenso xxx]]';
+  const lav = ct.lavrador ? `**${ct.lavrador}**` : '[[nome de quem lavra xxx]]', cargo = ct.cargo || '[[cargo xxx]]';
+  const lavCargo = ct.lavrador ? `**${ct.lavrador} – ${cargo}**` : `${lav} – ${cargo}`;
+  const selo = F('m_selo', 'número do selo'), rogo = v('m_procRogo');
+  const itens = itensProcuracao(c);
+  const abertura = c.trad
+    ? `Saibam quantos este público instrumento virem que, ${data}, ${ct.localTrad || '[[local da lavratura xxx]]'}, em Cartório, perante mim, ${lavCargo}, ${vb(A, 'compareceu', 'compareceram')}:`
+    : `Saibam todos quantos virem este público instrumento que, ${data}, ${ct.localRev || ct.localTrad || '[[local da lavratura xxx]]'}, em Cartório, perante mim, ${ct.cargoCurto || cargo}, ${vb(A, 'compareceu a parte', 'compareceram as partes')} a seguir ${vb(A, 'qualificada', 'qualificadas')}.`;
+  const testemunhas = rogo ? 'na presença das testemunhas acima qualificadas' : 'dispensada a presença das testemunhas instrumentárias';
+  if (!c.trad) itens.push({ tr: 'DO ENCERRAMENTO', x: `Assim ${vb(A, 'o disse e me pediu', 'o disseram e me pediram')} que lavrasse este instrumento, o qual, lido em voz alta e achado conforme, ${vb(A, 'aceita, outorga e assina', 'aceitam, outorgam e assinam')}, ${testemunhas}. Eu, ${lav}, ${cargo}, o lavrei, conferi, li e subscrevo e encerro o ato. Dou fé. Selo: ${selo}.` });
+  let corpo = abertura + ' ' + itens.map((it, i) => `__${romano(i + 1)} – ${c.trad ? it.tt : it.tr}:__ ${it.x}`).join(' ');
+  if (c.trad) corpo += ` **ASSIM** o ${vb(A, 'disse', 'disseram')}, do que **DOU FÉ**, me ${vb(A, 'pediu', 'pediram')} este público instrumento que ${vb(A, 'lhe', 'lhes')} lavrei em minhas notas. Lido e achado conforme, ${vb(A, 'aceita, concorda, outorga e assina', 'aceitam, concordam, outorgam e assinam')}, ${testemunhas}, do que **DOU FÉ**. Eu, ${lavCargo}, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assinam ${art.o(A)} **${MA}** e o **${(ct.cargoCurto || cargo).toUpperCase()}**.`;
+
+  // Assinam só o mandante (ou quem assina a rogo, com as testemunhas) e o tabelião.
+  const ass = rogo
+    ? [['A ROGO DE ' + (A.pessoas.map(p => p.nome.toUpperCase()).join(', ') || 'MANDANTE'), 'Assinatura a rogo'], ['TESTEMUNHA', ''], ['TESTEMUNHA', '']]
+    : A.pessoas.map(p => [p.nome.toUpperCase(), p.papel || 'Mandante']);
+  ass.push([ct.lavrador || 'NOME DE QUEM LAVRA', cargo]);
+  const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
+  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('', titulo) + p('corpo', corpo) +
+    p('c', `${ct.cidadeData || '[[cidade/UF xxx]]'}, ${dataCurta(v('m_data')) || '[[data xxx]]'}.`) +
+    ass.map(([n, r]) => `<div class="ass">______________________________________________<br><b>${esc(n)}</b>${r ? '<br>' + esc(r) : ''}</div>`).join('');
+}
+
 const TITULOS = {
   cv: 'ESCRITURA PÚBLICA DE COMPRA E VENDA', dacao: 'ESCRITURA PÚBLICA DE DAÇÃO EM PAGAMENTO',
   inventario: 'ESCRITURA PÚBLICA DE INVENTÁRIO E PARTILHA', divorcio: 'ESCRITURA PÚBLICA DE DIVÓRCIO CONSENSUAL COM PARTILHA DE BENS'
@@ -553,6 +676,7 @@ const TITULOS = {
 
 function gerarMinuta() {
   const c = contexto();
+  if (c.m === 'procuracao') return gerarProcuracao(c);
   const itens = { cv: itensCompraVenda, dacao: itensDacao, inventario: itensInventario, divorcio: itensDivorcio }[c.m](c);
 
   let titulo;
@@ -566,20 +690,22 @@ function gerarMinuta() {
   }
 
   const data = dataExtenso(v('m_data')) || '[[data da lavratura por extenso xxx]]';
+  // Quem lava e onde: vêm do cartório escolhido no topo.
+  const ct = C(), lav = ct.lavrador ? `**${ct.lavrador}**` : '[[nome de quem lavra xxx]]', cargo = ct.cargo || '[[cargo xxx]]';
   const abertura = c.trad
-    ? `Saibam quantos este público instrumento virem que, ${data}, neste Distrito, Comarca e Município de Bujaru – PA, em Cartório, perante mim, **LUÍS ALBERTO FRAZÃO MODESTO – Tabelião e Registrador Substituto**, compareceram:`
-    : `Saibam todos quantos virem este público instrumento que, ${data}, neste Distrito, Município e Comarca de Bujaru, Estado do Pará, em Cartório, perante mim, Tabelião Substituto, compareceram as partes a seguir qualificadas.`;
+    ? `Saibam quantos este público instrumento virem que, ${data}, ${ct.localTrad || '[[local da lavratura (distrito, comarca e município) xxx]]'}, em Cartório, perante mim, ${ct.lavrador ? `**${ct.lavrador} – ${cargo}**` : `${lav} – ${cargo}`}, compareceram:`
+    : `Saibam todos quantos virem este público instrumento que, ${data}, ${ct.localRev || ct.localTrad || '[[local da lavratura xxx]]'}, em Cartório, perante mim, ${ct.cargoCurto || cargo}, compareceram as partes a seguir qualificadas.`;
   const selo = F('m_selo', 'número do selo');
   const quemAssina = c.m === 'inventario' || c.m === 'divorcio'
     ? `os ${R([c.A, c.rA])}, o **ADVOGADO**`
     : `${art.o(c.A)} ${R([c.A, c.rA])}, ${art.o(c.B)} ${R([c.B, c.rB])}`;
-  if (!c.trad) itens.push({ tr: 'DO ENCERRAMENTO', x: `Assim o disseram e me pediram que lavrasse este instrumento, o qual, lido em voz alta e achado conforme, aceitam, outorgam e assinam, dispensada a presença de testemunhas instrumentárias. Eu, **LUÍS ALBERTO FRAZÃO MODESTO**, Tabelião e Registrador Substituto, o lavrei, conferi, li e subscrevo e encerro o ato. Dou fé. Selo: ${selo}.` });
+  if (!c.trad) itens.push({ tr: 'DO ENCERRAMENTO', x: `Assim o disseram e me pediram que lavrasse este instrumento, o qual, lido em voz alta e achado conforme, aceitam, outorgam e assinam, dispensada a presença de testemunhas instrumentárias. Eu, ${lav}, ${cargo}, o lavrei, conferi, li e subscrevo e encerro o ato. Dou fé. Selo: ${selo}.` });
 
   // Numeração romana e referências cruzadas entre itens ({{objeto}}, {{titulo}}, {{divida}}).
   const ref = {};
   itens.forEach((it, i) => { if (it.k) ref[it.k] = romano(i + 1); });
   let corpo = abertura + ' ' + itens.map((it, i) => `__${romano(i + 1)} – ${c.trad ? (it.tt || it.tr) : (it.tr || it.tt)}:__ ${it.x}`).join(' ');
-  if (c.trad) corpo += ` **ASSIM** o disseram, do que **DOU FÉ**, me pediram este público instrumento, que lhes lavrei nas minhas notas. **NADA MAIS ME FOI DITO**, lido e achado conforme, aceitam, concordam e outorgam, dispensada a presença das testemunhas instrumentárias, do que **DOU FÉ**. Eu, **LUÍS ALBERTO FRAZÃO MODESTO – Tabelião e Registrador Substituto**, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assinam ${quemAssina} e o **TABELIÃO SUBSTITUTO**.`;
+  if (c.trad) corpo += ` **ASSIM** o disseram, do que **DOU FÉ**, me pediram este público instrumento, que lhes lavrei nas minhas notas. **NADA MAIS ME FOI DITO**, lido e achado conforme, aceitam, concordam e outorgam, dispensada a presença das testemunhas instrumentárias, do que **DOU FÉ**. Eu, ${ct.lavrador ? `**${ct.lavrador} – ${cargo}**` : `${lav} – ${cargo}`}, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assinam ${quemAssina} e o **${(ct.cargoCurto || cargo).toUpperCase()}**.`;
   corpo = corpo.replace(/\{\{(\w+)\}\}/g, (_, k) => ref[k] || `[[item ${k} xxx]]`);
 
   const ass = [];
@@ -587,13 +713,11 @@ function gerarMinuta() {
   addGrupo(c.A, c.rA);
   if (c.B) addGrupo(c.B, c.rB);
   if (c.m === 'inventario' || c.m === 'divorcio') ass.push([(v('m_adv').replace(/\*\*/g, '').split(',')[0].trim() || 'ADVOGADO').toUpperCase(), 'Advogado']);
-  ass.push(['LUÍS ALBERTO FRAZÃO MODESTO', 'Tabelião e Registrador Substituto']);
+  ass.push([ct.lavrador || 'NOME DE QUEM LAVRA', cargo]);
 
-  const livro = v('m_livro') ? `**LIVRO ${v('m_livro')}**` : '[[livro xxx]]';
-  const folhas = v('m_folhas') ? `**FOLHAS ${v('m_folhas')}**` : '[[folhas xxx]]';
   const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
-  $('mDoc').innerHTML = p('dir', `${livro} – ${folhas}`) + p('', titulo) + p('corpo', corpo) +
-    p('c', `Bujaru/PA, ${dataCurta(v('m_data')) || '[[data xxx]]'}.`) +
+  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('', titulo) + p('corpo', corpo) +
+    p('c', `${ct.cidadeData || '[[cidade/UF xxx]]'}, ${dataCurta(v('m_data')) || '[[data xxx]]'}.`) +
     ass.map(([n, r]) => `<div class="ass">______________________________________________<br><b>${esc(n)}</b><br>${esc(r)}</div>`).join('');
 }
 
@@ -601,14 +725,17 @@ function aoMudarModal() {
   const m = v('m_modal'), imovel = v('m_imovel');
   document.querySelectorAll('#mForm fieldset[data-modal]').forEach(f => f.classList.toggle('hidden', !f.dataset.modal.split(' ').includes(m)));
   document.querySelectorAll('#mForm fieldset[data-imovel]').forEach(f => f.classList.toggle('hidden', f.dataset.imovel !== imovel));
-  $('lblA').textContent = { cv: 'Vendedores', dacao: 'Devedores', inventario: 'Herdeiros e meeiro', divorcio: 'Divorciandos' }[m];
-  $('lblB').textContent = { cv: 'Compradores', dacao: 'Credores' }[m] || '';
+  $('lblA').textContent = { cv: 'Vendedores', dacao: 'Devedores', inventario: 'Herdeiros e meeiro', divorcio: 'Divorciandos', procuracao: 'Mandantes (outorgantes)' }[m];
+  $('lblB').textContent = { cv: 'Compradores', dacao: 'Credores', procuracao: 'Procuradores (mandatários)' }[m] || '';
+  const tipoProc = v('m_procTipo');
+  $('boxProcBem').classList.toggle('hidden', tipoProc !== 'imovel');
+  $('lblProcPoderes').textContent = tipoProc === 'outra' ? 'Poderes conferidos' : 'Poderes adicionais (opcional)';
   $('boxAGen').classList.toggle('hidden', m === 'divorcio' || m === 'inventario');
   $('lblValor').textContent = { cv: 'Preço e pagamento', dacao: 'Valor da dívida', inventario: 'Valor dos bens e partilha', divorcio: 'Valor do imóvel e partilha' }[m];
   $('lblValorCampo').textContent = { cv: 'Preço (R$)', dacao: 'Valor da dívida / atribuído ao imóvel (R$)', inventario: 'Monte-mor (R$)', divorcio: 'Valor atribuído ao imóvel (R$)' }[m];
   $('lblImp').textContent = m === 'inventario' ? 'Imposto (ITCMD)' : 'Imposto (ITBI)';
   if (aoMudarModal.ultimo !== m) {
-    $('m_imp').value = { cv: 'pendente', dacao: 'pendente', inventario: 'pago', divorcio: 'nao_incide' }[m];
+    $('m_imp').value = { cv: 'pendente', dacao: 'pendente', inventario: 'pago', divorcio: 'nao_incide', procuracao: 'nao_incide' }[m];
     aoMudarModal.ultimo = m;
   }
   gerarMinuta();
@@ -616,23 +743,77 @@ function aoMudarModal() {
 
 function nomeArquivoMinuta() {
   const c = contexto(), prim = p => (p ? semAcento(p.nome.split(' ')[0]).toUpperCase() : 'xxx');
+  if (c.m === 'procuracao') return nomePasta(`${v('m_num') || 'NNN'} - PROCURACAO ${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])} - LIVRO ${v('m_livro') || 'xxx'} FOLHAS ${formatarFolhas(v('m_folhas')) || 'xxx'} (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`.replace(/\//g, '-'), 180);
   const tipo = { cv: 'COMPRA E VENDA', dacao: 'DACAO EM PAGAMENTO', inventario: 'INVENTARIO', divorcio: 'DIVORCIO' }[c.m];
   const partes = c.m === 'inventario' ? `DE ${semAcento(v('m_falNome').split(' ')[0] || 'xxx').toUpperCase()}`
     : c.m === 'divorcio' ? `${prim(c.A.pessoas[0])} E ${prim(c.A.pessoas[1])}` : `${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])}`;
   return nomePasta(`${v('m_num') || 'NNN'} - ESCRITURA ${tipo} ${partes} - LIVRO ${v('m_livro') || 'xxx'} (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`, 180);
 }
 
+// Timbre da minuta: faixa azul com o selo e o texto do cartório (Ajustes → Cartório → Timbre da minuta).
+// Sem rodapé: o fim da página fica livre para a assinatura eletrônica.
+// No Word, a imagem vai pelo endereço completo do app (o Word baixa ao abrir) e o layout em tabela.
+// Modelo 13 (aprovado): faixa azul com selo, nome e atribuições à esquerda; titular, cargo e endereço à direita.
+function timbreHTML(modo) {
+  const ct = C(), l = (ct.timbre || ct.cabecalho || ct.nome || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const src = ct.logo ? (modo === 'word' ? new URL(ct.logo, location.href).href : ct.logo) : '';
+  const cor = ct.cor || '#14284b';
+  const [l1 = '', l2 = '', l3 = '', ...resto] = l;
+  // Coluna da direita: "NOME – Cargo" vira duas linhas; o endereço pode ter até duas linhas.
+  const titular = resto.join(' · ').split(/\s+[–-]\s+/);
+  const direita = [[titular[0] || '', true], [titular.slice(1).join(' – '), false],
+    ...(ct.endereco ? ct.endereco.split('\n').map(x => [x.trim(), false]) : [['endereço do cartório – preencher em Ajustes', false]])].filter(([t]) => t);
+  if (modo === 'word') {
+    const linhaDir = direita.map(([t, forte]) => `<span style="font-size:${forte ? '9' : '8.5'}pt;color:${forte ? '#ffffff' : '#dfe5ef'}">${forte ? '<b>' + esc(t) + '</b>' : esc(t)}</span>`).join('<br>');
+    return `<table width="100%" style="width:100%;border-collapse:collapse;margin-bottom:0" cellpadding="0" cellspacing="0"><tr>` +
+      `<td bgcolor="${cor}" style="background:${cor};padding:8pt 10pt;border-bottom:3pt solid #c49a3a">` +
+      `<table width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse"><tr>` +
+      (src ? `<td style="width:70pt;vertical-align:middle"><img src="${src}" width="62" height="62"></td>` : '') +
+      `<td style="vertical-align:middle;font-family:'Arial Narrow',Arial;color:#ffffff">` +
+      `<span style="font-family:Georgia,serif;font-size:15pt;font-weight:bold;color:#ffffff;letter-spacing:2pt">${esc(l1)}</span><br>` +
+      `<span style="font-size:9.5pt;color:#dfe5ef">${esc(l2)}</span><br>` +
+      `<span style="font-size:9pt;color:#e8d3a2;letter-spacing:.5pt">${esc(l3)}</span></td>` +
+      `<td style="vertical-align:middle;text-align:right;border-left:1pt solid #c49a3a;padding-left:9pt;font-family:'Arial Narrow',Arial;white-space:nowrap">${linhaDir}</td>` +
+      `</tr></table></td></tr></table>`;
+  }
+  return `<div class="timbre">${src ? `<img src="${src}" alt="">` : ''}<div class="esq"><div class="t1">${esc(l1)}</div><div class="t2">${esc(l2)}</div>` +
+    `<div class="t3">${esc(l3)}</div></div><div class="dir">${direita.map(([t, forte]) => `<div${forte ? ' class="forte"' : ''}>${esc(t)}</div>`).join('')}</div></div>`;
+}
+
+// Folhas no padrão do livro: três dígitos, início/fim ("10 a 11" → "010/011"; "10v" mantém o verso).
+function formatarFolhas(s) {
+  const nums = String(s || '').match(/\d+\s*[vV]?/g);
+  if (!nums) return String(s || '').trim();
+  const f = n => n.replace(/\s+/g, '').replace(/^\d+/, d => d.padStart(3, '0')).toLowerCase();
+  return nums.length > 1 ? f(nums[0]) + '/' + f(nums[nums.length - 1]) : f(nums[0]);
+}
+
+// Dados do ato logo abaixo do timbre (mudam a cada escritura; vazios saem em vermelho):
+// Livro na margem esquerda, Data no centro e Folhas na margem direita. Tabela sem bordas para o Word manter as posições.
+function atoHTML() {
+  const cel = (rot, val, faltando, alinh) => `<td style="width:33.3%;text-align:${alinh};padding:2pt 0 1pt;vertical-align:bottom">` +
+    `<span style="font-family:Arial,sans-serif;font-size:7pt;letter-spacing:1.2px;color:#888">${rot}</span> ` +
+    (val ? `<b style="font-size:10pt;color:${C().cor || '#14284b'}">${esc(val)}</b>` : `<b style="font-size:10pt;color:#d00000">${faltando} xxx</b>`) + '</td>';
+  return `<table class="ato" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0 0 10pt;border-bottom:1px solid #c49a3a"><tr>` +
+    cel('LIVRO', v('m_livro'), 'livro', 'left') + cel('DATA', v('m_data') ? dataBR(v('m_data')) : '', 'data', 'center') +
+    cel('FOLHAS', formatarFolhas(v('m_folhas')), 'folhas', 'right') + '</tr></table>';
+}
+
 function blobMinutaWord() {
   gerarMinuta();
-  const estilo = `body{font-family:'Arial Narrow',Arial,sans-serif;font-size:12pt} p{text-align:justify;margin:0 0 12pt;line-height:150%}
+  // Folha A4 (21 × 29,7 cm), margens 2 cm e 3 cm à esquerda — as mesmas da folha mostrada na tela.
+  const estilo = `@page Folha{size:21cm 29.7cm;margin:2cm 2cm 2cm 3cm;mso-header-margin:1cm;mso-footer-margin:1cm;mso-paper-source:0}
+    div.Folha{page:Folha}
+    body{font-family:'Arial Narrow',Arial,sans-serif;font-size:12pt} p{text-align:justify;margin:0 0 12pt;line-height:150%}
     .dir{text-align:right} .c{text-align:center} .corpo{text-indent:3.75cm} .red{color:#FF0000;font-weight:bold}
     .ass{text-align:center;margin-top:28pt;page-break-inside:avoid}`;
-  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${estilo}</style></head><body>${$('mDoc').innerHTML}</body></html>`;
+  const word = '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->';
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">${word}<style>${estilo}</style></head><body><div class="Folha">${$('mDoc').innerHTML.replace(/^<div class="timbre">[\s\S]*?<\/div><\/div><\/div>/, timbreHTML('word'))}</div></body></html>`;
   return new Blob(['﻿', doc], { type: 'application/msword' });
 }
 
 // Preenche a minuta a partir de uma escritura cadastrada.
-const NATUREZA_MODAL = n => /INVENT/i.test(n) ? 'inventario' : /DIV[OÓ]RCIO/i.test(n) ? 'divorcio' : /DA[CÇ][AÃ]O/i.test(n) ? 'dacao' : 'cv';
+const NATUREZA_MODAL = n => /PROCURA/i.test(n) ? 'procuracao' : /INVENT/i.test(n) ? 'inventario' : /DIV[OÓ]RCIO/i.test(n) ? 'divorcio' : /DA[CÇ][AÃ]O/i.test(n) ? 'dacao' : 'cv';
 async function minutaDaEscritura(id) {
   const e = id && await Reg.get('escrituras', id);
   if (!e) return;
@@ -648,6 +829,9 @@ async function minutaDaEscritura(id) {
   $('m_imovel').value = e.rural ? 'rural' : 'urbano';
   aoMudarModal();
 }
+
+// Ao trocar de cartório: tabela, atos adicionais e minuta passam a ser os dele.
+function recarregarFerramentas() { montarTipos(); montarAvulsos(); montarItens(); calcular(); gerarMinuta(); }
 
 /* --------------------------- Ligações --------------------------- */
 function iniciarFerramentas() {
@@ -676,12 +860,13 @@ function iniciarFerramentas() {
     aoMudarModal(); abrirSub('minuta');
   });
 
-  ['m_modal', 'm_imovel'].forEach(id => $(id).addEventListener('change', aoMudarModal));
+  ['m_modal', 'm_imovel', 'm_procTipo'].forEach(id => $(id).addEventListener('change', aoMudarModal));
   document.querySelectorAll('#mForm input, #mForm select, #mForm textarea').forEach(el => {
     if (['m_modal', 'm_imovel', 'mEsc'].includes(el.id)) return;
     el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', gerarMinuta);
   });
   ['m_venal', 'm_valor', 'm_impValor', 'm_impBase'].forEach(id => formatarAoSair($(id)));
+  $('m_folhas').addEventListener('blur', () => { $('m_folhas').value = formatarFolhas(v('m_folhas')); });
   $('m_data').value = hojeISO();
   $('mEsc').addEventListener('change', () => minutaDaEscritura($('mEsc').value));
   $('mWord').addEventListener('click', () => baixarBlob(blobMinutaWord(), nomeArquivoMinuta() + '.doc'));

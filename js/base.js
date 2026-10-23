@@ -89,6 +89,7 @@ const CFG_PADRAO = {
   repassesPagos: {},
   // Comunicações: conferências das folhas, envios autorizados e folhas inutilizadas (comuns entre aparelhos).
   comConferencias: {}, comEnvios: {}, folhasInutilizadas: {}, comInicio: '2026-10-01',
+  pastasProprias: [],   // pastas de parceiro que, na verdade, são captação própria do Luis
   ultimoBackup: 0, syncLido: 0, syncEscrito: 0
 };
 let CFG = { ...CFG_PADRAO };

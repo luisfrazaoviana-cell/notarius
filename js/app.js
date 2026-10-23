@@ -1,7 +1,7 @@
 // Inicialização, navegação, tela inicial e ajustes.
 
 const TITULOS_VIEW = { inicio: 'Início', escrituras: 'Escrituras', ferramentas: 'Calculadora e minutas', orcamentos: 'Orçamentos',
-  controle: 'Controle financeiro', comunicacoes: 'Comunicações', acervo: 'Acervo', ajustes: 'Ajustes', mais: 'Mais' };
+  controle: 'Controle financeiro', receitas: 'Receitas', comunicacoes: 'Comunicações', acervo: 'Acervo', ajustes: 'Ajustes', mais: 'Mais' };
 
 const CAMPOS_CARTORIO = ['nome', 'cor', 'logo', 'uf', 'issPct', 'pasta', 'tabela', 'codCertidao', 'codDiligencia', 'lavrador', 'cargo', 'cargoCurto',
   'localTrad', 'localRev', 'cidadeData', 'siglaArquivo', 'timbre', 'endereco', 'cabecalho', 'banco', 'pix', 'descricaoGuia', 'repassePct', 'repasseDestino'];
@@ -88,7 +88,7 @@ const App = {
     this.view = v;
     document.querySelectorAll('.view').forEach(s => s.classList.toggle('ativa', s.id === 'view-' + v));
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('ativo', b.dataset.view === v ||
-      (b.dataset.view === 'mais' && ['controle', 'comunicacoes', 'acervo', 'ajustes'].includes(v))));
+      (b.dataset.view === 'mais' && ['controle', 'receitas', 'comunicacoes', 'acervo', 'ajustes'].includes(v))));
     $('titulo').textContent = TITULOS_VIEW[v] || '';
     window.scrollTo(0, 0);
     this.renderView();
@@ -96,7 +96,7 @@ const App = {
 
   renderView() {
     const r = { inicio: () => this.renderInicio(), escrituras: () => Esc.render(), orcamentos: () => Orc.render(),
-      controle: () => Ctl.render(), comunicacoes: () => Com.render(), ajustes: () => this.statusAjustes(), ferramentas: () => this.listaMinutaEsc() }[this.view];
+      controle: () => Ctl.render(), comunicacoes: () => Com.render(), receitas: () => Rec.render(), ajustes: () => this.statusAjustes(), ferramentas: () => this.listaMinutaEsc() }[this.view];
     if (r) r();
   },
 
@@ -122,12 +122,14 @@ const App = {
     const dia = new Date().getDate();
     const compProx = dia <= 5 && !CFG.repassesPagos[chaveRepasse(mesAnt)] ? mesAnt : mes;
     const repProx = soma(lav.filter(e => mesDe(e.dataLavratura) === compProx), e => Ctl.repasse(e));
-    const com = await Com.pendencias();
+    const com = await Com.pendencias(), rec = await Rec.resumo();
     $('iniKpis').innerHTML = `
       <div class="kpi destaque"><small>Emolumentos de ${nomeMes(mes)}</small><b>R$ ${brl(soma(doMes, e => e.emolumentos))}</b><span>${doMes.length} lavrada(s)</span></div>
       <div class="kpi"><small>Próximo repasse (dia 5)</small><b>R$ ${brl(repProx)}</b><span>vence ${dataBR(mesSeguinte(compProx) + '-05')}</span></div>
       <div class="kpi"><small>A receber de clientes</small><b>R$ ${brl(soma(aReceber, e => e.emolumentos))}</b><span>${aReceber.length} escritura(s)</span></div>
       <div class="kpi"><small>Minutas em andamento</small><b>${minutas.length}</b><span>${todas.length} atos no total</span></div>
+      <div class="kpi clic" data-ir="receitas"><small>Orçamentos feitos</small><b>R$ ${brl(rec.orcTotal)}</b><span>${rec.orcQtd} orçamento(s) · em aberto R$ ${brl(rec.orcAberto)} (${rec.orcAbertoQtd})</span></div>
+      <div class="kpi clic" data-ir="receitas"><small>Meus honorários a receber</small><b>R$ ${brl(rec.honAberto)}</b><span>${rec.honAbertoQtd} ato(s) · recebidos R$ ${brl(rec.honRecebido)}</span></div>
       <div class="kpi clic" data-ir="comunicacoes"><small>Comunicações pendentes</small><b>${com.qtd}</b><span>${com.prazo ? 'próximo prazo ' + dataBR(com.prazo) : 'em dia'}</span></div>`;
     $('iniMinutas').innerHTML = minutas.length ? minutas.slice(0, 12).map(e => Esc.itemHTML(e)).join('') : '<div class="vazio">Nenhuma minuta em andamento.</div>';
   },
@@ -215,7 +217,7 @@ const App = {
     document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharModal(); });
     document.addEventListener('dados-atualizados', () => this.renderView());
 
-    iniciarFerramentas(); Esc.iniciar(); Orc.iniciar(); Ctl.iniciar(); Com.iniciar(); Acv.iniciar();
+    iniciarFerramentas(); Esc.iniciar(); Orc.iniciar(); Ctl.iniciar(); Com.iniciar(); Rec.iniciar(); Acv.iniciar();
     this.iniciarAjustes();
     this.ir('inicio');
 

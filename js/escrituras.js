@@ -203,7 +203,7 @@ const Esc = {
       </div>
       <h3>Recebimento</h3>
       <div class="linha2">
-        <div class="checks" style="align-self:end"><label><input type="checkbox" id="ed_recebido" ${r.recebido ? 'checked' : ''}> Cliente já pagou</label></div>
+        <div class="checks" style="align-self:end"><label><input type="checkbox" id="ed_recebido" ${r.recebido ? 'checked' : ''}> Cliente já pagou (emolumentos/orçamento)</label></div>
         ${campo('dataRecebimento', 'Data do pagamento', 'date')}
         ${campo('valorRecebido', 'Valor recebido (R$)', 'text', 'inputmode="decimal"')}
       </div>
@@ -213,6 +213,7 @@ const Esc = {
         ${r.situacao !== 'LAVRADA' ? '<button class="ouro" id="edLavrar">Marcar como LAVRADA</button>' : ''}
         ${ehProcuracao(r) ? '' : '<button id="edOrc">Fazer orçamento</button>'}
         <button id="edMinuta">Fazer minuta</button>
+        <button id="edHon">${r.honorarios ? `Honorários R$ ${brl(r.honorarios)}${r.honPago ? ' (recebidos)' : ''}` : 'Lançar honorários'}</button>
         <button id="edExcluir" style="margin-left:auto">Tirar da lista</button>
       </div>
       <h3>Documentos</h3>
@@ -221,6 +222,7 @@ const Esc = {
       $('edSalvar').onclick = () => this.salvarDetalhe(id);
       if ($('edLavrar')) $('edLavrar').onclick = () => this.lavrar(id);
       if ($('edOrc')) $('edOrc').onclick = () => { fecharModal(); Orc.novo({ escId: id }); };
+      $('edHon').onclick = () => { fecharModal(); Rec.lancarHon(id); };
       $('edMinuta').onclick = () => { fecharModal(); App.ir('ferramentas'); abrirSub('minuta'); minutaDaEscritura(id); };
       $('edExcluir').onclick = async () => {
         if (!await confirmar('Tirar da lista', 'Tirar esta escritura da lista do Notarius? A pasta no Drive não é apagada.')) return;

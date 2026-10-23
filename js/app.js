@@ -128,8 +128,8 @@ const App = {
       <div class="kpi"><small>Próximo repasse (dia 5)</small><b>R$ ${brl(repProx)}</b><span>vence ${dataBR(mesSeguinte(compProx) + '-05')}</span></div>
       <div class="kpi"><small>A receber de clientes</small><b>R$ ${brl(soma(aReceber, e => e.emolumentos))}</b><span>${aReceber.length} escritura(s)</span></div>
       <div class="kpi"><small>Minutas em andamento</small><b>${minutas.length}</b><span>${todas.length} atos no total</span></div>
-      <div class="kpi clic" data-ir="receitas"><small>Orçamentos feitos</small><b>R$ ${brl(rec.orcTotal)}</b><span>${rec.orcQtd} orçamento(s) · em aberto R$ ${brl(rec.orcAberto)} (${rec.orcAbertoQtd})</span></div>
-      <div class="kpi clic" data-ir="receitas"><small>Meus honorários a receber</small><b>R$ ${brl(rec.honAberto)}</b><span>${rec.honAbertoQtd} ato(s) · recebidos R$ ${brl(rec.honRecebido)}</span></div>
+      <div class="kpi clic" data-ir="receitas"><small>Orçamentos em aberto</small><b>R$ ${brl(rec.orcAberto)}</b><span>${rec.orcAbertoQtd} orçamento(s) não pago(s)</span></div>
+      <div class="kpi clic" data-ir="receitas"><small>Meus honorários a receber</small><b>R$ ${brl(rec.honAberto)}</b><span>${rec.honAbertoQtd} ato(s)</span></div>
       <div class="kpi clic" data-ir="comunicacoes"><small>Comunicações pendentes</small><b>${com.qtd}</b><span>${com.prazo ? 'próximo prazo ' + dataBR(com.prazo) : 'em dia'}</span></div>`;
     $('iniMinutas').innerHTML = minutas.length ? minutas.slice(0, 12).map(e => Esc.itemHTML(e)).join('') : '<div class="vazio">Nenhuma minuta em andamento.</div>';
   },

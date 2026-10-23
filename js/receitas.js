@@ -64,11 +64,12 @@ const Rec = {
       : `<button class="peq" ${attr}>Marcar pago</button>`;
 
     if (this.aba === 'orc') {
+      // Em destaque só o que está em aberto; os totais gerais ficam recolhidos (abrem ao tocar).
       $('recKpis').innerHTML = `
-        <div class="kpi"><small>Orçamentos feitos</small><b>R$ ${brl(this.somar(linhasOrc))}</b><span>${linhasOrc.length} orçamento(s)</span></div>
         <div class="kpi destaque"><small>Em aberto (não pagos)</small><b>R$ ${brl(this.somar(linhasOrc, x => !x.pago))}</b><span>${linhasOrc.filter(x => !x.pago).length} orçamento(s)</span></div>
-        <div class="kpi"><small>Já pagos</small><b>R$ ${brl(this.somar(linhasOrc, x => x.pago))}</b><span>${linhasOrc.filter(x => x.pago).length} orçamento(s)</span></div>
-        <div class="kpi"><small>Filtro atual</small><b>R$ ${brl(this.somar(vis))}</b><span>${vis.length} orçamento(s)</span></div>`;
+        <div class="kpi"><small>Filtro atual</small><b>R$ ${brl(this.somar(vis))}</b><span>${vis.length} orçamento(s)</span></div>
+        <details class="totais"><summary>Ver totais gerais</summary>
+          Orçamentos feitos: <b>R$ ${brl(this.somar(linhasOrc))}</b> (${linhasOrc.length}) · Já pagos: <b>R$ ${brl(this.somar(linhasOrc, x => x.pago))}</b> (${linhasOrc.filter(x => x.pago).length})</details>`;
       const ab = linhasOrc.filter(x => !x.pago);
       $('recAcoes').innerHTML = '<button id="recCsv">Exportar planilha (CSV)</button><button id="recProprias">Pastas de captação própria</button>' +
         `<div class="hint" style="flex-basis:100%">Em aberto – <b>parceiros</b>: R$ ${brl(this.somar(ab, x => this.origem(x.parceiro) === 'Parceiro'))} · <b>captação própria</b>: R$ ${brl(this.somar(ab, x => this.propria(x.parceiro)))} · <b>sem parceiro</b>: R$ ${brl(this.somar(ab, x => this.origem(x.parceiro) === 'Sem parceiro'))}</div>`;
@@ -82,11 +83,10 @@ const Rec = {
       const porParc = {};
       linhasHon.forEach(x => { const r = porParc[x.parceiro] = porParc[x.parceiro] || { t: 0, a: 0, n: 0 }; r.t += x.valor; r.n++; if (!x.pago) r.a += x.valor; });
       $('recKpis').innerHTML = `
-        <div class="kpi"><small>Honorários contratados</small><b>R$ ${brl(this.somar(linhasHon))}</b><span>${linhasHon.length} ato(s)</span></div>
         <div class="kpi destaque"><small>A receber</small><b>R$ ${brl(this.somar(linhasHon, x => !x.pago))}</b><span>${linhasHon.filter(x => !x.pago).length} ato(s)</span></div>
-        <div class="kpi"><small>Recebidos</small><b>R$ ${brl(this.somar(linhasHon, x => x.pago))}</b><span>${linhasHon.filter(x => x.pago).length} ato(s)</span></div>
-        <div class="kpi"><small>Captação própria</small><b>R$ ${brl(this.somar(linhasHon, x => this.propria(x.parceiro)))}</b><span>parceiros: R$ ${brl(this.somar(linhasHon, x => !this.propria(x.parceiro)))}</span></div>
-        <div class="kpi"><small>Filtro atual</small><b>R$ ${brl(this.somar(vis))}</b><span>${vis.length} ato(s)</span></div>`;
+        <div class="kpi"><small>Filtro atual</small><b>R$ ${brl(this.somar(vis))}</b><span>${vis.length} ato(s)</span></div>
+        <details class="totais"><summary>Ver totais gerais</summary>
+          Contratados: <b>R$ ${brl(this.somar(linhasHon))}</b> (${linhasHon.length}) · Recebidos: <b>R$ ${brl(this.somar(linhasHon, x => x.pago))}</b> · Captação própria: <b>R$ ${brl(this.somar(linhasHon, x => this.propria(x.parceiro)))}</b> · Parceiros: <b>R$ ${brl(this.somar(linhasHon, x => !this.propria(x.parceiro)))}</b></details>`;
       $('recAcoes').innerHTML = '<button class="prim" id="recLancar">+ Lançar honorário</button><button id="recCsv">Exportar planilha (CSV)</button><button id="recProprias">Pastas de captação própria</button>' +
         (Object.keys(porParc).length ? `<div class="hint" style="flex-basis:100%">${Object.entries(porParc).sort((a, b) => b[1].t - a[1].t).map(([k, r]) => `<b>${esc(k)}</b>: R$ ${brl(r.t)} (${r.n})${r.a ? ' · a receber R$ ' + brl(r.a) : ''}`).join(' &nbsp;|&nbsp; ')}</div>` : '');
       $('recTabela').innerHTML = `<thead><tr><th>Ato</th><th>Parceiro</th><th>Contratante</th><th>Situação</th><th class="n">Honorários (R$)</th><th>Recebimento</th></tr></thead><tbody>` +

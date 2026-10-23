@@ -59,6 +59,8 @@ const Rec = {
     const sit = $('recSituacao').value, q = semAcento($('recBusca').value).toLowerCase().trim(), org = $('recOrigem').value;
     const filtro = x => (!selP.value || x.parceiro === selP.value) && (!sit || (sit === 'pago') === x.pago) && (!org || this.origem(x.parceiro) === org) &&
       (!q || semAcento([x.partes, x.imovel, x.parceiro, x.contratante, x.ato, x.nome].join(' ')).toLowerCase().includes(q));
+    // "Filtro atual" só aparece quando há filtro além do padrão (só a receber).
+    const filtrado = !!(selP.value || org || q || sit !== 'aberto');
     const vis = linhas.filter(filtro).sort((a, b) => (a.pago - b.pago) || (b.data || '').localeCompare(a.data || ''));
     const pagoHTML = (x, attr) => x.pago ? `<span class="selo pago">PAGO${x.dataPago ? ' ' + dataBR(x.dataPago) : ''}</span>`
       : `<button class="peq" ${attr}>Marcar pago</button>`;
@@ -67,7 +69,7 @@ const Rec = {
       // Em destaque só o que está em aberto; os totais gerais ficam recolhidos (abrem ao tocar).
       $('recKpis').innerHTML = `
         <div class="kpi destaque"><small>Em aberto (não pagos)</small><b>R$ ${brl(this.somar(linhasOrc, x => !x.pago))}</b><span>${linhasOrc.filter(x => !x.pago).length} orçamento(s)</span></div>
-        <div class="kpi"><small>Filtro atual</small><b>R$ ${brl(this.somar(vis))}</b><span>${vis.length} orçamento(s)</span></div>
+        ${filtrado ? `<div class="kpi"><small>Filtro atual</small><b>R$ ${brl(this.somar(vis))}</b><span>${vis.length} orçamento(s)</span></div>` : ''}
         <details class="totais"><summary>Ver totais gerais</summary>
           Orçamentos feitos: <b>R$ ${brl(this.somar(linhasOrc))}</b> (${linhasOrc.length}) · Já pagos: <b>R$ ${brl(this.somar(linhasOrc, x => x.pago))}</b> (${linhasOrc.filter(x => x.pago).length})</details>`;
       const ab = linhasOrc.filter(x => !x.pago);
@@ -84,7 +86,7 @@ const Rec = {
       linhasHon.forEach(x => { const r = porParc[x.parceiro] = porParc[x.parceiro] || { t: 0, a: 0, n: 0 }; r.t += x.valor; r.n++; if (!x.pago) r.a += x.valor; });
       $('recKpis').innerHTML = `
         <div class="kpi destaque"><small>A receber</small><b>R$ ${brl(this.somar(linhasHon, x => !x.pago))}</b><span>${linhasHon.filter(x => !x.pago).length} ato(s)</span></div>
-        <div class="kpi"><small>Filtro atual</small><b>R$ ${brl(this.somar(vis))}</b><span>${vis.length} ato(s)</span></div>
+        ${filtrado ? `<div class="kpi"><small>Filtro atual</small><b>R$ ${brl(this.somar(vis))}</b><span>${vis.length} ato(s)</span></div>` : ''}
         <details class="totais"><summary>Ver totais gerais</summary>
           Contratados: <b>R$ ${brl(this.somar(linhasHon))}</b> (${linhasHon.length}) · Recebidos: <b>R$ ${brl(this.somar(linhasHon, x => x.pago))}</b> · Captação própria: <b>R$ ${brl(this.somar(linhasHon, x => this.propria(x.parceiro)))}</b> · Parceiros: <b>R$ ${brl(this.somar(linhasHon, x => !this.propria(x.parceiro)))}</b></details>`;
       $('recAcoes').innerHTML = '<button class="prim" id="recLancar">+ Lançar honorário</button><button id="recCsv">Exportar planilha (CSV)</button><button id="recProprias">Pastas de captação própria</button>' +

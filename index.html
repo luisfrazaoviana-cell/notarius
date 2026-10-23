@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d5c4d">
+<title>Notarius</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icones/icone-192.png">
+<link rel="apple-touch-icon" href="icones/icone-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Notarius">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-inicio" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-esc" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></symbol>
+  <symbol id="i-calc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2M12 12h2M16 12h0M8 16h2M12 16h2M16 16h0"/></symbol>
+  <symbol id="i-orc" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5M15 16h2"/></symbol>
+  <symbol id="i-ctl" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-acv" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
+  <symbol id="i-aj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+  <symbol id="i-mais" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></symbol>
+</svg>
+
+<aside class="lateral">
+  <div class="marca"><div class="logo">N</div><div><b>Notarius</b><small>Gestão Notarial e Financeira</small></div></div>
+  <nav id="navLateral">
+    <button data-view="inicio"><svg class="ico"><use href="#i-inicio"/></svg>Início</button>
+    <button data-view="escrituras"><svg class="ico"><use href="#i-esc"/></svg>Escrituras</button>
+    <button data-view="ferramentas"><svg class="ico"><use href="#i-calc"/></svg>Calculadora e minutas</button>
+    <button data-view="orcamentos"><svg class="ico"><use href="#i-orc"/></svg>Orçamentos</button>
+    <button data-view="controle"><svg class="ico"><use href="#i-ctl"/></svg>Controle financeiro</button>
+    <button data-view="acervo"><svg class="ico"><use href="#i-acv"/></svg>Acervo</button>
+    <button data-view="ajustes"><svg class="ico"><use href="#i-aj"/></svg>Ajustes</button>
+  </nav>
+  <div class="rodape">Cartório de Santana de Bujaru/PA</div>
+</aside>
+
+<nav class="inferior" id="navInferior">
+  <button data-view="inicio"><svg class="ico"><use href="#i-inicio"/></svg>Início</button>
+  <button data-view="escrituras"><svg class="ico"><use href="#i-esc"/></svg>Escrituras</button>
+  <button data-view="ferramentas"><svg class="ico"><use href="#i-calc"/></svg>Calcular</button>
+  <button data-view="orcamentos"><svg class="ico"><use href="#i-orc"/></svg>Orçamentos</button>
+  <button data-view="mais"><svg class="ico"><use href="#i-mais"/></svg>Mais</button>
+</nav>
+
+<main>
+  <div class="topo">
+    <h1 id="titulo">Início</h1>
+    <div class="status">
+      <span class="chip" id="chipNuvem" data-view="ajustes"><span class="bola"></span><span>Nuvem</span></span>
+      <span class="chip hidden" id="chipHD" data-view="ajustes"><span class="bola"></span><span>HD</span></span>
+    </div>
+  </div>
+
+  <!-- ============================ INÍCIO ============================ -->
+  <section class="view" id="view-inicio">
+    <div id="iniEntrar" class="card hidden" style="margin-bottom:18px">
+      <h2>Google Drive</h2>
+      <p style="margin:0 0 10px">Entre com a sua conta do Google para abrir as escrituras e os dados do Notarius.</p>
+      <button class="prim" id="btnEntrar">Entrar com Google</button>
+    </div>
+    <div class="kpis" id="iniKpis"></div>
+    <div class="grid">
+      <div class="card">
+        <h2>Minutas em andamento</h2>
+        <div class="lista" id="iniMinutas"></div>
+      </div>
+      <div class="card">
+        <h2>O que você quer fazer?</h2>
+        <div class="lista">
+          <div class="item" data-ir="nova"><div><div class="t">Nova escritura</div><div class="s">Cria a pasta do parceiro com as 4 subpastas.</div></div></div>
+          <div class="item" data-ir="orcamentos"><div><div class="t">Orçamento (Guia PIX)</div><div class="s">Calcula pela tabela 2026 e gera o PDF com QR Code.</div></div></div>
+          <div class="item" data-ir="ferramentas"><div><div class="t">Calculadora, checklist e minutas</div><div class="s">Emolumentos, documentos necessários e minuta em Word.</div></div></div>
+          <div class="item" data-ir="acervo"><div><div class="t">Pesquisar no acervo</div><div class="s">Por nome, CPF, selo, livro, folha ou texto dos documentos.</div></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ ESCRITURAS ============================ -->
+  <section class="view" id="view-escrituras">
+    <div class="barra">
+      <input type="search" id="escBusca" placeholder="Buscar por partes, imóvel, selo…">
+      <select id="escParceiro"><option value="">Todos os parceiros</option></select>
+      <select id="escSituacao"><option value="">Todas</option><option>MINUTA</option><option>LAVRADA</option></select>
+      <button class="prim" id="escNova">+ Nova escritura</button>
+      <button id="escAtualizar">Atualizar do Drive</button>
+      <button id="escImportar">Importar índice</button>
+    </div>
+    <div class="hint" id="escResumo" style="margin-bottom:10px"></div>
+    <div class="lista" id="escLista"></div>
+  </section>
+
+  <!-- ============================ FERRAMENTAS ============================ -->
+  <section class="view" id="view-ferramentas">
+    <nav class="subtabs no-print">
+      <button type="button" data-sub="calc" class="ativo">Calculadora</button>
+      <button type="button" data-sub="check">Checklist de documentos</button>
+      <button type="button" data-sub="minuta">Minutas</button>
+    </nav>
+
+    <section class="sub ativo" id="sub-calc">
+      <div class="grid">
+        <div class="card no-print">
+          <h2>Dados do ato</h2>
+          <label class="f" for="tipo">Tipo de ato</label>
+          <select id="tipo"></select>
+          <div id="blocoValor">
+            <label class="f" for="valor">Valor do imóvel / valor declarado</label>
+            <div class="valor"><span>R$</span><input id="valor" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div>
+            <div class="hint">Use o maior valor entre o declarado e o venal, conforme a regra do ato.</div>
+          </div>
+          <div id="blocoItem" class="hidden">
+            <label class="f" for="item">Espécie</label>
+            <select id="item"></select>
+          </div>
+          <div id="blocoQtd" class="hidden">
+            <label class="f" for="qtd" id="qtdLabel"></label>
+            <input id="qtd" type="number" min="0" step="1" value="0">
+          </div>
+          <h3>Acréscimos (30% cada, até 90%)</h3>
+          <div class="linha2">
+            <div>
+              <label class="f" for="nOnus" style="margin-top:0">Ônus / cláusulas resolutivas</label>
+              <select id="nOnus"><option value="0">Nenhum</option><option value="1">1 (30%)</option><option value="2">2 (60%)</option><option value="3">3 (90%)</option></select>
+            </div>
+            <div class="checks" style="align-self:end"><label><input type="checkbox" id="rural"> Imóvel rural (30%)</label></div>
+          </div>
+          <div class="hint">Os acréscimos se somam até 90% e nunca ultrapassam o valor dos emolumentos. Incidem só sobre os emolumentos do ato principal; o ISS é recalculado e o selo não muda.</div>
+          <h3>Atos adicionais</h3>
+          <div id="avulsos"></div>
+        </div>
+        <div class="card">
+          <h2>Resultado</h2>
+          <div id="saida"><div class="vazio">Informe o valor para calcular.</div></div>
+          <div class="acoes no-print">
+            <button type="button" id="copiar">Copiar resumo</button>
+            <button type="button" onclick="window.print()">Imprimir</button>
+            <button type="button" id="irOrcamento">Fazer orçamento</button>
+            <button type="button" class="prim" id="irChecklist">Checklist de documentos</button>
+          </div>
+        </div>
+      </div>
+      <details class="no-print" id="detFaixas">
+        <summary>Ver todas as faixas deste ato</summary>
+        <div class="faixas" id="faixas"></div>
+      </details>
+    </section>
+
+    <section class="sub" id="sub-check">
+      <div class="grid larga">
+        <div class="card no-print">
+          <h2>Escritura</h2>
+          <label class="f" for="cModal">Modalidade</label>
+          <select id="cModal">
+            <option value="cv">Compra e venda</option>
+            <option value="inventario">Inventário e partilha</option>
+            <option value="divorcio">Divórcio consensual com partilha</option>
+            <option value="dacao">Dação em pagamento</option>
+          </select>
+          <label class="f" for="cImovel">Imóvel</label>
+          <select id="cImovel"><option value="urbano">Urbano</option><option value="rural">Rural</option></select>
+          <h3>Situações</h3>
+          <div class="checks">
+            <label><input type="checkbox" id="cCasados"> Há parte casada ou em união estável</label>
+            <label><input type="checkbox" id="cPJ"> Há pessoa jurídica</label>
+            <label><input type="checkbox" id="cProc"> Há parte representada por procurador</label>
+            <label><input type="checkbox" id="cCond"> Imóvel em condomínio</label>
+            <label><input type="checkbox" id="cMenor"> Há menor ou incapaz (inventário/divórcio)</label>
+          </div>
+        </div>
+        <div class="card">
+          <h2 id="cTitulo">Documentos necessários</h2>
+          <div id="cLista"></div>
+          <div class="acoes no-print">
+            <button type="button" id="cCopiar">Copiar lista</button>
+            <button type="button" onclick="window.print()">Imprimir</button>
+            <button type="button" class="prim" id="cMinuta">Abrir minuta desta escritura</button>
+          </div>
+          <div class="aviso">Lista de referência (Lei 7.433/85, Decreto 93.240/86, CNSNR-PA, Resolução CNJ 35/2007). Prazos usuais: certidão de matrícula, 30 dias; certidões de registro civil, 90 dias. Confira as exigências do caso concreto.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sub" id="sub-minuta">
+      <div class="grid larga">
+        <div class="card no-print" id="mForm">
+          <h2>Modelo</h2>
+          <label class="f" for="mEsc">Escritura (pasta)</label>
+          <select id="mEsc"><option value="">— nenhuma —</option></select>
+          <div class="hint">Escolhendo a escritura, os nomes são preenchidos e a minuta pode ser salva na pasta 01 - MINUTA.</div>
+          <label class="f" for="m_modal">Escritura</label>
+          <select id="m_modal">
+            <option value="cv">Compra e venda</option>
+            <option value="inventario">Inventário e partilha</option>
+            <option value="divorcio">Divórcio consensual com partilha</option>
+            <option value="dacao">Dação em pagamento</option>
+          </select>
+          <div class="linha2">
+            <div><label class="f" for="m_imovel">Imóvel</label>
+              <select id="m_imovel"><option value="urbano">Urbano</option><option value="rural">Rural</option></select></div>
+            <div><label class="f" for="m_modelo">Redação</label>
+              <select id="m_modelo"><option value="trad">Tradicional</option><option value="rev">Revisada</option></select></div>
+          </div>
+          <div class="hint">Campos vazios saem em <b style="color:#d00000">vermelho</b> ("informação xxx"). Nos textos você pode usar **negrito**.</div>
+
+          <h3>Livro e data</h3>
+          <div class="linha2">
+            <div><label class="f" for="m_num">Nº da minuta</label><input id="m_num" type="text" placeholder="ex.: 045"></div>
+            <div><label class="f" for="m_data">Data da lavratura</label><input id="m_data" type="date"></div>
+            <div><label class="f" for="m_livro">Livro</label><input id="m_livro" type="text"></div>
+            <div><label class="f" for="m_folhas">Folhas</label><input id="m_folhas" type="text"></div>
+          </div>
+
+          <fieldset data-modal="inventario">
+            <h3>Autor da herança</h3>
+            <div class="linha2">
+              <div><label class="f" for="m_falNome">Nome</label><input id="m_falNome" type="text"></div>
+              <div><label class="f" for="m_falGen">Gênero</label><select id="m_falGen"><option value="M">Masculino</option><option value="F">Feminino</option></select></div>
+            </div>
+            <label class="f" for="m_falQual">Qualificação (estado civil, CPF, último domicílio)</label>
+            <textarea id="m_falQual"></textarea>
+            <div class="linha2">
+              <div><label class="f" for="m_obitoData">Data do óbito</label><input id="m_obitoData" type="text" placeholder="dd/mm/aaaa"></div>
+              <div><label class="f" for="m_rcto">Certidão RCTO/CENSEC</label><input id="m_rcto" type="text" placeholder="nº / data"></div>
+            </div>
+            <label class="f" for="m_obitoCert">Certidão de óbito (matrícula e cartório)</label>
+            <input id="m_obitoCert" type="text">
+            <label class="f" for="m_invNome">Inventariante (nome)</label>
+            <input id="m_invNome" type="text">
+          </fieldset>
+
+          <h3 id="lblA">Vendedores</h3>
+          <label class="f" for="m_aNomes">Nomes (um por linha; opcional "NOME | papel")</label>
+          <textarea id="m_aNomes"></textarea>
+          <div id="boxAGen"><label class="f" for="m_aGen">Gênero do grupo</label>
+            <select id="m_aGen"><option value="M">Masculino / misto</option><option value="F">Feminino</option></select></div>
+          <label class="f" for="m_aQual">Qualificação completa</label>
+          <textarea id="m_aQual" style="min-height:110px"></textarea>
+
+          <fieldset data-modal="cv dacao">
+            <h3 id="lblB">Compradores</h3>
+            <label class="f" for="m_bNomes">Nomes (um por linha; opcional "NOME | papel")</label>
+            <textarea id="m_bNomes"></textarea>
+            <label class="f" for="m_bGen">Gênero do grupo</label>
+            <select id="m_bGen"><option value="M">Masculino / misto</option><option value="F">Feminino</option></select>
+            <label class="f" for="m_bQual">Qualificação completa</label>
+            <textarea id="m_bQual" style="min-height:110px"></textarea>
+          </fieldset>
+
+          <fieldset data-modal="inventario divorcio">
+            <label class="f" for="m_adv">Advogado (nome e OAB)</label>
+            <input id="m_adv" type="text" placeholder="**NOME**, advogado inscrito na OAB/PA sob o nº ...">
+          </fieldset>
+
+          <fieldset data-modal="divorcio">
+            <h3>Casamento</h3>
+            <div class="linha2">
+              <div><label class="f" for="m_casData">Data do casamento</label><input id="m_casData" type="text" placeholder="dd/mm/aaaa"></div>
+              <div><label class="f" for="m_casMat">Matrícula da certidão</label><input id="m_casMat" type="text"></div>
+            </div>
+            <label class="f" for="m_casCart">Cartório expedidor</label><input id="m_casCart" type="text">
+            <label class="f" for="m_regime">Regime de bens</label>
+            <select id="m_regime">
+              <option>comunhão parcial de bens</option><option>comunhão universal de bens</option>
+              <option>separação total de bens</option><option>separação obrigatória de bens</option>
+              <option>participação final nos aquestos</option>
+            </select>
+            <label class="f" for="m_filhos">Filhos</label>
+            <select id="m_filhos">
+              <option value="sem">Não têm filhos comuns</option>
+              <option value="maiores">Filhos maiores e capazes</option>
+              <option value="judicial">Filhos menores – guarda e alimentos já resolvidos em juízo</option>
+            </select>
+            <input id="m_proc" type="text" placeholder="nº do processo (se filhos menores)" style="margin-top:6px">
+            <label class="f" for="m_nomeOp">Nome após o divórcio</label>
+            <select id="m_nomeOp"><option value="mantem">Mantêm os nomes atuais</option><option value="volta">Divorcianda volta ao nome de solteira</option></select>
+            <input id="m_nomeSolteira" type="text" placeholder="nome de solteira" style="margin-top:6px">
+            <label class="f" for="m_alimOp">Alimentos entre os cônjuges</label>
+            <select id="m_alimOp"><option value="dispensa">Dispensam reciprocamente</option><option value="fixa">Fixados (descrever)</option></select>
+            <input id="m_alim" type="text" placeholder="descrição dos alimentos" style="margin-top:6px">
+          </fieldset>
+
+          <fieldset data-modal="dacao">
+            <h3>Dívida</h3>
+            <label class="f" for="m_divida">Origem da dívida</label>
+            <input id="m_divida" type="text" placeholder="originada do contrato de ..., firmado em ...">
+          </fieldset>
+
+          <h3>Imóvel</h3>
+          <label class="f" for="m_local">Localização (só endereço – Lei 7.433/85)</label>
+          <textarea id="m_local"></textarea>
+          <div class="linha2">
+            <div><label class="f" for="m_matricula">Matrícula nº</label><input id="m_matricula" type="text"></div>
+            <div><label class="f" for="m_municipio">Município/UF</label><input id="m_municipio" type="text" placeholder="Bujaru/PA"></div>
+          </div>
+          <label class="f" for="m_ri">Ofício de Registro de Imóveis</label>
+          <input id="m_ri" type="text" placeholder="Cartório do Único Ofício de Bujaru/PA">
+          <label class="f" for="m_onus">Ônus não cancelados (um por linha)</label>
+          <textarea id="m_onus" placeholder="AV-8 – INDISPONIBILIDADE DE BENS"></textarea>
+          <div class="checks">
+            <label><input type="checkbox" id="m_indisp"> Há indisponibilidade entre os ônus</label>
+            <label><input type="checkbox" id="m_cond"> Imóvel em condomínio</label>
+          </div>
+          <fieldset data-imovel="urbano">
+            <div class="linha2">
+              <div><label class="f" for="m_cadSigla">Cadastro (sigla)</label><input id="m_cadSigla" type="text" value="CIF"></div>
+              <div><label class="f" for="m_cadNum">Nº do cadastro</label><input id="m_cadNum" type="text"></div>
+            </div>
+            <label class="f" for="m_cadNome">Nome do documento</label>
+            <input id="m_cadNome" type="text" value="Certidão Imobiliária Fiscal – CIF">
+            <label class="f" for="m_cadOrgao">Órgão expedidor</label>
+            <input id="m_cadOrgao" type="text" value="Secretaria Municipal de Gestão Fazendária de Ananindeua/PA">
+            <div class="hint">A sigla CIF é de Ananindeua; em outro município, ajuste o nome do cadastro.</div>
+          </fieldset>
+          <fieldset data-imovel="rural">
+            <div class="linha2">
+              <div><label class="f" for="m_ccir">CCIR nº</label><input id="m_ccir" type="text"></div>
+              <div><label class="f" for="m_nirf">CIB/NIRF nº</label><input id="m_nirf" type="text"></div>
+            </div>
+            <label class="f" for="m_car">CAR nº</label><input id="m_car" type="text">
+          </fieldset>
+          <label class="f" for="m_venal">Valor venal / valor fiscal (R$)</label>
+          <input id="m_venal" type="text" inputmode="decimal">
+
+          <h3 id="lblValor">Preço e pagamento</h3>
+          <label class="f" for="m_valor" id="lblValorCampo">Valor (R$)</label>
+          <input id="m_valor" type="text" inputmode="decimal">
+          <fieldset data-modal="cv">
+            <div class="linha2">
+              <div><label class="f" for="m_pagData">Data do pagamento</label><input id="m_pagData" type="text" placeholder="dd/mm/aaaa"></div>
+              <div><label class="f" for="m_pagForma">Forma de pagamento</label><input id="m_pagForma" type="text" placeholder="transferência PIX"></div>
+            </div>
+          </fieldset>
+          <fieldset data-modal="inventario divorcio">
+            <label class="f" for="m_partilha">Partilha (como fica cada quinhão)</label>
+            <textarea id="m_partilha"></textarea>
+          </fieldset>
+
+          <h3 id="lblImp">Imposto</h3>
+          <select id="m_imp">
+            <option value="pendente">Não pago – adquirente apresenta no RI</option>
+            <option value="pago">Pago</option>
+            <option value="nao_incide">Não incide</option>
+          </select>
+          <div class="linha2">
+            <div><label class="f" for="m_impValor">Valor do imposto</label><input id="m_impValor" type="text" inputmode="decimal"></div>
+            <div><label class="f" for="m_impBase">Base de cálculo</label><input id="m_impBase" type="text" inputmode="decimal"></div>
+          </div>
+          <label class="f" for="m_impDocs">Documentos do imposto</label>
+          <textarea id="m_impDocs" placeholder="**A) Documento de Arrecadação Municipal – DAM**, expedido em ..., sob o nº ...; **B) Comprovante de Pagamento**, ..."></textarea>
+
+          <h3>CNIB e selo</h3>
+          <label class="f" for="m_hash">Códigos HASH da CNIB (um por linha)</label>
+          <textarea id="m_hash"></textarea>
+          <label class="f" for="m_selo">Selo</label>
+          <input id="m_selo" type="text">
+        </div>
+
+        <div class="card">
+          <div class="acoes no-print" style="margin:0 0 16px">
+            <button type="button" class="prim" id="mSalvar">Salvar na pasta da escritura</button>
+            <button type="button" id="mWord">Baixar Word (.doc)</button>
+            <button type="button" id="mCopiar">Copiar texto</button>
+            <button type="button" onclick="window.print()">Imprimir</button>
+          </div>
+          <div class="doc" id="mDoc"></div>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <!-- ============================ ORÇAMENTOS ============================ -->
+  <section class="view" id="view-orcamentos">
+    <div class="grid">
+      <div class="card">
+        <h2>Novo orçamento (Guia de Pagamento – PIX)</h2>
+        <label class="f" for="orcEsc">Escritura (pasta)</label>
+        <select id="orcEsc"><option value="">— avulso, sem pasta —</option></select>
+        <label class="f" for="orcNome">Interessado (comprador)</label>
+        <input id="orcNome" type="text">
+        <div class="linha2">
+          <div><label class="f" for="orcCpf">CPF/CNPJ</label><input id="orcCpf" type="text" inputmode="numeric"></div>
+          <div><label class="f" for="orcData">Data</label><input id="orcData" type="date"></div>
+        </div>
+        <label class="f" for="orcImovel">Imóvel</label>
+        <input id="orcImovel" type="text">
+        <div class="linha2">
+          <div><label class="f" for="orcPreco">Preço declarado (R$)</label><input id="orcPreco" type="text" inputmode="decimal"></div>
+          <div><label class="f" for="orcVenal">Valor venal (R$)</label><input id="orcVenal" type="text" inputmode="decimal"></div>
+        </div>
+        <div class="hint">A faixa é achada pelo maior valor entre preço e venal.</div>
+        <div class="linha2">
+          <div><label class="f" for="orcOnus">Ônus / cláusulas (30% cada)</label>
+            <select id="orcOnus"><option value="0">Nenhum</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
+          <div class="checks" style="align-self:end"><label><input type="checkbox" id="orcRural"> Imóvel rural (30%)</label></div>
+        </div>
+        <div class="linha2">
+          <div class="checks" style="align-self:end"><label><input type="checkbox" id="orcCert" checked> Certidão da matrícula (453)</label></div>
+          <div><label class="f" for="orcDil">Diligências (695)</label><input id="orcDil" type="number" min="0" value="1"></div>
+        </div>
+        <label class="f" for="orcOutros">Outros valores – transporte, avulsos (R$)</label>
+        <input id="orcOutros" type="text" inputmode="decimal">
+        <label class="f" for="orcDesc">Descrição na guia</label>
+        <input id="orcDesc" type="text">
+      </div>
+      <div class="card">
+        <h2>Composição</h2>
+        <div id="orcComp"><div class="vazio">Informe preço ou valor venal.</div></div>
+        <div class="acoes">
+          <button class="prim" id="orcSalvar">Gerar PDF e salvar</button>
+          <button id="orcBaixar">Só baixar o PDF</button>
+        </div>
+        <h3>Orçamentos salvos</h3>
+        <div class="lista" id="orcLista"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ CONTROLE ============================ -->
+  <section class="view" id="view-controle">
+    <div class="barra">
+      <input type="month" id="ctlMes">
+      <select id="ctlParceiro"><option value="">Todos os parceiros</option></select>
+      <button id="ctlCsv">Exportar planilha (CSV)</button>
+    </div>
+    <div class="kpis" id="ctlKpis"></div>
+    <div class="card" style="margin-bottom:18px">
+      <h2>Escrituras do mês</h2>
+      <div class="rolagem"><table class="tab" id="ctlTabela"></table></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2>Repasse ao Cartório de Santana (todo dia 5)</h2>
+        <div class="rolagem"><table class="tab" id="ctlRepasse"></table></div>
+      </div>
+      <div class="card">
+        <h2>A receber de clientes</h2>
+        <div class="lista" id="ctlReceber"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ ACERVO ============================ -->
+  <section class="view" id="view-acervo">
+    <div class="barra">
+      <input type="search" id="acvBusca" placeholder="Nome, CPF, selo, livro, folha ou qualquer texto dos documentos">
+      <button class="prim" id="acvBuscar">Pesquisar</button>
+    </div>
+    <div class="hint" style="margin-bottom:14px">A pesquisa olha os dados das escrituras e o texto dos arquivos no Google Drive (o Google lê também os PDFs escaneados).</div>
+    <div class="grid">
+      <div class="card"><h2>Escrituras</h2><div class="lista" id="acvEscrituras"><div class="vazio">Faça uma pesquisa.</div></div></div>
+      <div class="card"><h2>Arquivos</h2><div class="lista" id="acvArquivos"><div class="vazio">Faça uma pesquisa.</div></div></div>
+    </div>
+  </section>
+
+  <!-- ============================ MAIS (celular) ============================ -->
+  <section class="view" id="view-mais">
+    <div class="lista">
+      <div class="item" data-ir="controle"><div><div class="t">Controle financeiro</div><div class="s">Arrecadação, a receber e repasse do dia 5.</div></div></div>
+      <div class="item" data-ir="acervo"><div><div class="t">Acervo</div><div class="s">Pesquisar escrituras e documentos.</div></div></div>
+      <div class="item" data-ir="ajustes"><div><div class="t">Ajustes</div><div class="s">Google Drive, HD, backup e dados do orçamento.</div></div></div>
+    </div>
+  </section>
+
+  <!-- ============================ AJUSTES ============================ -->
+  <section class="view" id="view-ajustes">
+    <div class="grid">
+      <div class="card">
+        <h2>Nuvem (pasta comum entre PC e celular)</h2>
+        <label class="f" for="ajModo">Onde ficam os dados</label>
+        <select id="ajModo"><option value="drive">Google Drive</option><option value="demo">Demonstração (só neste aparelho, sem conta)</option></select>
+        <div id="ajDriveBox">
+          <label class="f" for="ajClientId">ID de cliente do Google</label>
+          <input id="ajClientId" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com">
+          <div class="hint">Configuração feita uma vez, no Google Cloud (veja o guia CONFIGURAR GOOGLE.md).</div>
+          <label class="f" for="ajRaiz">Pasta das escrituras no Drive (link ou ID, opcional)</label>
+          <input id="ajRaiz" type="text" placeholder="em branco = procura &quot;ESCRITURAS ORGANIZADAS&quot;">
+          <div class="acoes"><button class="prim" id="ajEntrar">Entrar com Google</button><button id="ajSair">Sair</button></div>
+        </div>
+        <div class="hint" id="ajNuvemStatus"></div>
+
+        <h3>Backup</h3>
+        <div class="hint" id="ajBackupStatus"></div>
+        <div class="acoes">
+          <button id="ajBackupDrive">Fazer backup no Drive agora</button>
+          <button id="ajExportar">Baixar cópia dos dados</button>
+          <label class="hint" style="align-self:center"><input type="file" id="ajImportar" accept=".json" class="hidden"><button type="button" onclick="document.getElementById('ajImportar').click()">Restaurar de arquivo…</button></label>
+        </div>
+      </div>
+
+      <div class="card" id="ajHDCard">
+        <h2>HD externo (só no PC)</h2>
+        <div id="ajHDsem" class="aviso hidden">Neste aparelho o navegador não acessa pastas do computador. Use o Notarius no PC (Chrome ou Edge) para sincronizar com o HD.</div>
+        <div id="ajHDcom">
+          <p class="hint" style="margin-top:0">O HD fica sincronizado com o Drive: o que falta de um lado é copiado para o outro, sem duplicar e sem apagar nada. As planilhas da raiz (índice e repasse) só vão do HD para o Drive.</p>
+          <div class="hint" id="ajHDStatus"></div>
+          <div class="acoes">
+            <button id="ajHDescolher">Escolher pasta ESCRITURAS ORGANIZADAS no HD</button>
+            <button id="ajBkpEscolher">Escolher pasta de backup no HD</button>
+          </div>
+          <div class="acoes"><button class="prim" id="ajSincHD">Sincronizar HD ⇄ Drive agora</button></div>
+          <div class="progresso hidden" id="ajSincBarra"><div></div></div>
+          <div class="log" id="ajSincLog"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Orçamento e repasse (vale para PC e celular)</h2>
+        <label class="f" for="ajRepasse">Repasse ao Cartório de Santana (%)</label>
+        <input id="ajRepasse" type="number" min="0" max="100" step="0.5">
+        <label class="f" for="ajCabecalho">Cabeçalho da guia</label>
+        <textarea id="ajCabecalho"></textarea>
+        <label class="f" for="ajBanco">Dados bancários</label>
+        <textarea id="ajBanco"></textarea>
+        <label class="f" for="ajPix">Código Pix (copia e cola, para o QR Code)</label>
+        <textarea id="ajPix"></textarea>
+        <label class="f" for="ajDescricao">Descrição padrão na guia</label>
+        <input id="ajDescricao" type="text">
+        <label class="f" for="ajCidade">Cidade da data</label>
+        <input id="ajCidade" type="text">
+        <div class="acoes"><button class="prim" id="ajSalvarCfg">Salvar</button></div>
+      </div>
+
+      <div class="card">
+        <h2>Instalar no celular e no PC</h2>
+        <p class="hint" style="margin-top:0">Com o Notarius publicado num endereço https: no celular, abra o endereço e use "Adicionar à tela de início"; no PC (Chrome/Edge), clique no ícone de instalar da barra de endereço.</p>
+        <button id="ajInstalar" class="hidden">Instalar este app</button>
+        <div class="hint" id="ajVersao"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal">
+  <div class="caixa">
+    <button class="fechar" onclick="fecharModal()" aria-label="Fechar">×</button>
+    <h2 id="modal-titulo"></h2>
+    <div id="modal-corpo"></div>
+  </div>
+</div>
+<div class="modal" id="dialogo" style="z-index:70"><div class="caixa" style="width:min(460px,100%)"><h2></h2><div class="corpo"></div></div></div>
+<div id="toasts"></div>
+
+<script src="js/config.js"></script>
+<script src="js/dados.js"></script>
+<script src="js/base.js"></script>
+<script src="js/nuvem.js"></script>
+<script src="js/hd.js"></script>
+<script src="js/registros.js"></script>
+<script src="js/ferramentas.js"></script>
+<script src="js/escrituras.js"></script>
+<script src="js/orcamentos.js"></script>
+<script src="js/controle.js"></script>
+<script src="js/acervo.js"></script>
+<script src="js/sinchd.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

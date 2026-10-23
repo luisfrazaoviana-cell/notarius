@@ -62,6 +62,8 @@ main { margin-left: var(--side); padding: 22px 26px 60px; max-width: 1240px; }
 
 /* ---------- Componentes ---------- */
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+/* Sem isto, tabelas e a folha A4 alargam a coluna e a tela rola para o lado no celular. */
+.grid > * { min-width: 0; }
 .grid.larga { grid-template-columns: 380px 1fr; }
 .grid.tres { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 1000px) { .grid.tres { grid-template-columns: 1fr 1fr; } }
@@ -179,7 +181,14 @@ fieldset { border: 0; padding: 0; margin: 0; }
 .doc { font-family: "Arial Narrow", Arial, sans-serif; font-size: 12pt; line-height: 1.5; text-align: justify;
   box-sizing: border-box; width: 21cm; max-width: 100%; min-height: 29.7cm; margin: 0 auto; padding: 2cm 2cm 2cm 3cm;
   background: #fff; color: #111; border: 1px solid var(--line); box-shadow: 0 2px 14px rgba(20,40,75,.12); }
-@media (max-width: 700px) { .doc { min-height: 0; padding: 14px; } }
+@media (max-width: 700px) {
+  .doc { min-height: 0; padding: 14px; overflow-wrap: anywhere; }
+  .doc .timbre .t1 { white-space: normal; font-size: 12pt; letter-spacing: 1px; }
+  .doc .ass { word-break: break-all; }
+  .doc table.ato td { white-space: nowrap; }
+  .doc table.ato td span { font-size: 6pt !important; letter-spacing: .5px !important; }
+  .doc table.ato td b { font-size: 8pt !important; }
+}
 @page { size: A4; margin: 2cm 2cm 2cm 3cm; }
 @media print { .doc { width: auto; min-height: 0; padding: 0; border: 0; box-shadow: none; } }
 .doc p { margin: 0 0 12pt; }

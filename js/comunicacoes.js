@@ -22,6 +22,12 @@ function infoQuinzena(q) {
     nome: `${n}ª quinzena de ${nomeMes(ym)}`
   };
 }
+// Quinzenas já encerradas desde o início do controle (com ou sem atos: sem atos, a CENSEC é negativa).
+function quinzenasEncerradas(inicio, hoje) {
+  const r = [];
+  for (let q = quinzenaAnterior(quinzenaDe(hoje)); infoQuinzena(q).fim >= inicio && r.length < 120; q = quinzenaAnterior(q)) r.push(q);
+  return r.reverse();
+}
 const quinzenaAnterior = q => q.endsWith('-2') ? q.slice(0, 7) + '-1' : (() => { const [a, m] = q.split('-').map(Number); return m === 1 ? `${a - 1}-12-2` : `${a}-${String(m - 1).padStart(2, '0')}-2`; })();
 
 // Livro e folhas: "24 - P" = "024-P"; folhas em meias-folhas (frente = 2n, verso = 2n+1).
@@ -30,9 +36,18 @@ function lerFolhas(txt) {
   const p = String(txt || '').match(/\d+\s*v?/gi);
   if (!p) return null;
   const u = s => parseInt(s, 10) * 2 + (/v/i.test(s) ? 1 : 0);
-  return { ini: u(p[0]), fim: Math.max(u(p[0]), u(p[p.length - 1])) };
+  // "254/255": o ato vai até o fim da folha 255 (o verso pode estar escrito ou em branco).
+  const fim = parseInt(p[p.length - 1], 10) * 2 + 1;
+  return { ini: u(p[0]), fim: Math.max(u(p[0]), fim) };
 }
 const rotFolha = u => String(Math.floor(u / 2)).padStart(3, '0') + (u % 2 ? 'v' : '');
+const numFolha = u => String(Math.floor(u / 2)).padStart(3, '0');
+// Meias-folhas faltantes -> "fls. 245 a 253" / "fl. 263".
+function faixasFolhas(us) {
+  const nums = [...new Set(us.map(u => Math.floor(u / 2)))].sort((a, b) => a - b), r = [];
+  for (const n of nums) { const ult = r[r.length - 1]; if (ult && n === ult[1] + 1) ult[1] = n; else r.push([n, n]); }
+  return r.map(([a, b]) => a === b ? `fl. ${String(a).padStart(3, '0')}` : `fls. ${String(a).padStart(3, '0')} a ${String(b).padStart(3, '0')}`).join(', ');
+}
 // "030, 031v, 040 a 042" -> conjunto de meias-folhas inutilizadas.
 function lerInutilizadas(txt) {
   const s = new Set();
@@ -52,11 +67,13 @@ const noControle = e => !!e.dataLavratura && e.dataLavratura >= inicioCom();
 const Com = {
   // Quais comunicações cada ato exige.
   tipos(e) {
-    const n = semAcento(e.natureza || e.nome || '').toUpperCase(), proc = /PROCURA/.test(n);
+    const n = semAcento(`${e.natureza || ''} ${e.nome || ''}`).toUpperCase(), proc = /PROCURA/.test(n);
+    // Atos acessórios citam "compra e venda" no nome, mas não transmitem o imóvel: sem DOI e sem análise COAF.
+    const acessorio = /ADITAMENTO|RERRATIF|RE-RATIF|RETIFICA|INSTITUICAO DE ONUS|ANUENCIA|CANCELAMENTO|DECLARAT|ATA NOTARIAL|SUBSTABELEC|REVOGA/.test(n);
     return {
       censec: /INVENT|DIVORC|SEPARA/.test(n) ? 'CESDI' : /TESTAMENT/.test(n) ? 'RCTO' : 'CEP',
-      doi: !proc && /COMPRA|VENDA|DACAO|DOACAO|CESSAO|INVENT|PARTILHA|DIVORC|PERMUTA|INTEGRALIZ/.test(n),
-      coaf: !proc && !/DECLARAT|ADITAMENTO|RE-RATIF/.test(n)
+      doi: !proc && !acessorio && /COMPRA|VENDA|DACAO|DOACAO|CESSAO|INVENT|PARTILHA|DIVORC|PERMUTA|INTEGRALIZ/.test(n),
+      coaf: !proc && !acessorio
     };
   },
   chave: q => `${CFG.cartorioAtual}|${q}`,
@@ -84,17 +101,17 @@ const Com = {
         .map(e => ({ e, f: lerFolhas(e.folhas) })).sort((a, b) => a.f.ini - b.f.ini || (a.e.dataLavratura || '').localeCompare(b.e.dataLavratura || ''));
       const noPeriodo = x => doPeriodo.includes(x.e);
       const doLivro = atos.filter(noPeriodo);
-      if (doLivro.length) resumoLivros.push(`Livro ${L}: ${doLivro.length} ato(s), fls. ${rotFolha(doLivro[0].f.ini)} a ${rotFolha(doLivro[doLivro.length - 1].f.fim)}`);
+      if (doLivro.length) resumoLivros.push(`Livro ${L}: ${doLivro.length} ato(s), fls. ${rotFolha(doLivro[0].f.ini)} a ${numFolha(doLivro[doLivro.length - 1].f.fim)}`);
       for (let i = 1; i < atos.length; i++) {
         const a = atos[i - 1], b = atos[i];
         if (!noPeriodo(a) && !noPeriodo(b)) continue;
         if (b.f.ini <= a.f.fim) {
-          prob.push({ g: 'erro', id: b.e.id, t: `Livro ${L}: folha usada duas vezes – ${nomeAto(a.e)} termina na fl. ${rotFolha(a.f.fim)} e ${nomeAto(b.e)} começa na fl. ${rotFolha(b.f.ini)}.` });
+          prob.push({ g: 'erro', id: b.e.id, t: `Livro ${L}: folha usada duas vezes – ${nomeAto(a.e)} vai até a fl. ${numFolha(a.f.fim)} e ${nomeAto(b.e)} começa na fl. ${rotFolha(b.f.ini)}.` });
           continue;
         }
         const faltam = [];
         for (let u = a.f.fim + 1; u < b.f.ini; u++) if (!inut.has(u)) faltam.push(u);
-        if (faltam.some(u => u % 2 === 0)) prob.push({ g: 'erro', id: b.e.id, t: `Livro ${L}: folha(s) pulada(s) ${faltam.map(rotFolha).join(', ')} entre ${nomeAto(a.e)} e ${nomeAto(b.e)}. Se o ato existe, cadastre-o; se a folha foi inutilizada, registre em "Folhas inutilizadas".` });
+        if (faltam.some(u => u % 2 === 0)) prob.push({ g: 'erro', id: b.e.id, t: `Livro ${L}: ${faixasFolhas(faltam.filter(u => u % 2 === 0))} sem ato, entre ${nomeAto(a.e)} e ${nomeAto(b.e)}. Se o ato existe, registre-o (com pasta ou em "Registrar ato sem pasta"); se a folha foi inutilizada, registre em "Folhas inutilizadas".` });
         else if (faltam.length) prob.push({ g: 'aviso', id: b.e.id, t: `Livro ${L}: verso ${faltam.map(rotFolha).join(', ')} sem ato entre ${nomeAto(a.e)} e ${nomeAto(b.e)}. Confirme se ficou em branco (inutilizado).` });
         if (a.e.dataLavratura && b.e.dataLavratura && b.e.dataLavratura < a.e.dataLavratura)
           prob.push({ g: 'aviso', id: b.e.id, t: `Livro ${L}: a data de ${nomeAto(b.e)} (${dataBR(b.e.dataLavratura)}) é anterior à do ato da folha antes dele (${dataBR(a.e.dataLavratura)}).` });
@@ -127,7 +144,7 @@ const Com = {
     const sel = $('comQuinzena');
     if (!sel.value || !lista.includes(sel.value)) {
       // Abre na quinzena encerrada mais antiga ainda sem CENSEC autorizada (ou na anterior à atual).
-      const pend = lista.slice(1).reverse().find(q => infoQuinzena(q).fim >= inicioCom() && !this.envio(q, 'censec') && lav.some(e => e.dataLavratura && quinzenaDe(e.dataLavratura) === q));
+      const pend = quinzenasEncerradas(inicioCom(), hoje).find(q => lista.includes(q) && !this.envio(q, 'censec'));
       sel.dataset.q = pend || lista[1];
     } else sel.dataset.q = sel.value;
     sel.innerHTML = lista.map(q => {
@@ -343,7 +360,7 @@ const Com = {
   // Para a tela inicial: quantas comunicações estão pendentes e o prazo mais próximo.
   async pendencias() {
     const lav = await this.lavradas(), hoje = hojeISO();
-    const quinz = [...new Set(lav.filter(noControle).map(e => quinzenaDe(e.dataLavratura)))].filter(q => infoQuinzena(q).fim < hoje && !this.envio(q, 'censec'));
+    const quinz = quinzenasEncerradas(inicioCom(), hoje).filter(q => !this.envio(q, 'censec'));
     const prazos = quinz.map(q => infoQuinzena(q).prazo);
     lav.filter(e => this.tipos(e).doi && noControle(e) && !(e.comunicacoes || {}).doi).forEach(e => prazos.push(ultimoDiaUtil(mesSeguinte(mesDe(e.dataLavratura)))));
     const coaf = lav.filter(e => this.tipos(e).coaf && noControle(e) && !(e.comunicacoes || {}).coaf).length;

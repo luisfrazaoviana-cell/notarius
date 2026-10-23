@@ -50,11 +50,19 @@ const Drive = {
     this.token = null; this.expira = 0;
   },
 
-  async api(url, opts = {}, tentou = false) {
+  // Chamada à API com nova tentativa quando o Google está instável (429/5xx, limite de uso) ou sem rede.
+  async api(url, opts = {}, tentou = false, espera = 0) {
     if (!this.conectado()) await this.entrar();
-    const r = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + this.token } });
-    if (r.status === 401 && !tentou) { this.token = null; return this.api(url, opts, true); }
-    if (!r.ok) throw new Error(`Google Drive ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    let r;
+    try { r = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + this.token } }); }
+    catch (e) { if (espera < 8000) { await new Promise(ok => setTimeout(ok, espera || 1000)); return this.api(url, opts, tentou, (espera || 1000) * 2); } throw new Error('Sem conexão com o Google Drive.'); }
+    if (r.status === 401 && !tentou) { this.token = null; return this.api(url, opts, true, espera); }
+    if (!r.ok) {
+      const txt = await r.text();
+      const instavel = r.status === 429 || r.status >= 500 || (r.status === 403 && /rateLimit|userRateLimit|backendError/i.test(txt));
+      if (instavel && espera < 8000) { await new Promise(ok => setTimeout(ok, espera || 1000)); return this.api(url, opts, tentou, (espera || 1000) * 2); }
+      throw new Error(`Google Drive ${r.status}: ${txt.slice(0, 200)}`);
+    }
     return r;
   },
 

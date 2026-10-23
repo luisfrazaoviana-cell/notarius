@@ -54,6 +54,8 @@ const Esc = {
       if (vistos.has(r.id) || r.excluido) continue;
       // No Google Drive, os exemplos do modo demonstração saem da lista (e da sincronização).
       if (Nuvem === Drive && ehDeDemo(r)) { r.excluido = true; r.atualizadoEm = agora(); mudadas.push(r); }
+      // Linhas do índice que não são atos (pastas de documentos/orçamentos avulsos) saem da lista.
+      else if (!r.driveId && !r.externo && !/^(MINUTA|LAVRADA)$/.test(r.situacao || '')) { r.excluido = true; r.atualizadoEm = agora(); mudadas.push(r); }
       else if (!r.semPasta && r.driveId) { r.semPasta = true; r.atualizadoEm = agora(); mudadas.push(r); }
     }
     if (mudadas.length) { await DB.putVarios('escrituras', mudadas); Reg.agendar(); }
@@ -234,7 +236,7 @@ const Esc = {
     const val = k => $('ed_' + k).value.trim();
     Object.assign(r, {
       natureza: val('natureza'), imovel: val('imovel'), outorgantes: val('outorgantes'), outorgados: val('outorgados'),
-      dataLavratura: val('dataLavratura'), selo: val('selo'), livro: val('livro'), folhas: formatarFolhas(val('folhas')), codigo: val('codigo'),
+      dataLavratura: val('dataLavratura'), selo: val('selo'), livro: val('livro') ? normLivro(val('livro')) : '', folhas: formatarFolhas(val('folhas')), codigo: val('codigo'),
       base: lerValor(val('base')), emolumentos: lerValor(val('emolumentos')), rural: $('ed_rural').checked,
       recebido: $('ed_recebido').checked, dataRecebimento: val('dataRecebimento'), valorRecebido: lerValor(val('valorRecebido')), obs: val('obs')
     });
@@ -248,14 +250,27 @@ const Esc = {
   // Renomeia a pasta de MINUTA - para LAVRADA - (no Drive; o HD acompanha na próxima sincronização).
   async lavrar(id) {
     const r = await Reg.get('escrituras', id);
-    const resp = await pedir('Marcar como LAVRADA', 'A pasta passa de "MINUTA - " para "LAVRADA - ".', [
+    const resp = await pedir('Marcar como LAVRADA', 'A pasta passa de "MINUTA - " para "LAVRADA - ". Livro e folhas entram na conferência e nas comunicações (CENSEC, DOI).', [
       { id: 'data', rotulo: 'Data da lavratura', tipo: 'date', valor: r.dataLavratura || hojeISO() },
+      { id: 'livro', rotulo: `Livro (ex.: ${ehProcuracao(r) ? '024-P' : '024-E'})`, valor: r.livro || '' },
+      { id: 'folhas', rotulo: 'Folhas (ex.: 010/011)', valor: r.folhas || '' },
       { id: 'selo', rotulo: 'Selo digital (pode deixar em branco)', valor: r.selo || '' }], ['Marcar como LAVRADA', 'Cancelar']);
     if (!resp) return;
+    const livro = resp.livro ? normLivro(resp.livro) : '', folhas = formatarFolhas(resp.folhas);
+    // Confere na hora se as folhas encostam ou se sobrepõem às de outro ato do mesmo livro.
+    if (livro && lerFolhas(folhas)) {
+      const f = lerFolhas(folhas);
+      const outros = (await Reg.doCartorio('escrituras')).filter(x => x.id !== id && x.situacao === 'LAVRADA' && normLivro(x.livro) === livro && lerFolhas(x.folhas));
+      const sobre = outros.find(x => { const g = lerFolhas(x.folhas); return f.ini <= g.fim && g.ini <= f.fim; });
+      if (sobre && !await confirmar('Folhas repetidas', `As folhas ${folhas} do livro ${livro} já estão em "${sobre.nome}" (fls. ${formatarFolhas(sobre.folhas)}). Confira antes de continuar.`, 'Continuar mesmo assim', 'Voltar')) return;
+      const antes = outros.map(x => lerFolhas(x.folhas).fim).filter(u => u < f.ini).sort((a, b) => b - a)[0];
+      if (!sobre && antes !== undefined && Math.floor(f.ini / 2) - Math.floor(antes / 2) > 1)
+        aviso(`Atenção: entre a fl. ${rotFolha(antes)} (último ato do livro ${livro} no app) e a fl. ${rotFolha(f.ini)} há folhas sem ato. Confira na tela Comunicações.`, 'erro');
+    }
     try {
       const novo = 'LAVRADA - ' + r.nome;
       await Nuvem.renomear(await this.pastaDe(r), novo);
-      Object.assign(r, { situacao: 'LAVRADA', pasta: novo, dataLavratura: resp.data || r.dataLavratura || hojeISO(), selo: resp.selo });
+      Object.assign(r, { situacao: 'LAVRADA', pasta: novo, dataLavratura: resp.data || r.dataLavratura || hojeISO(), selo: resp.selo, livro: livro || r.livro || '', folhas: folhas || r.folhas || '' });
       await Reg.salvar('escrituras', r);
       aviso('Pasta renomeada para LAVRADA.');
       fecharModal(); App.atualizarTudo(); this.detalhe(id);
@@ -402,7 +417,9 @@ const Esc = {
       for (const l of XLSX.utils.sheet_to_json(idx.Sheets[idx.SheetNames[0]], { defval: '' })) {
         const pasta = String(l['Pasta'] || '').trim(), parc = String(l['Parceiro'] || '').trim();
         if (!pasta || !parc) continue;
-        const m = pasta.match(RE_ESCRITURA), nomeAto = m ? m[2] : pasta;
+        const m = pasta.match(RE_ESCRITURA);
+        if (!m) continue; // linhas de documentos/orçamentos avulsos não são atos
+        const nomeAto = m[2];
         preencher(`${parc}/${nomeAto}`, {
           parceiro: parc, nome: nomeAto, pasta, situacao: m ? m[1].toUpperCase() : String(l['Situação'] || '').toUpperCase(),
           natureza: l['Natureza'], outorgantes: l['Outorgante(s)'], outorgados: l['Outorgado(s)'], dataLavratura: paraISO(l['Data lavratura']),

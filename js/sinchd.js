@@ -88,8 +88,15 @@ const SincHD = {
         return d;
       };
 
+      // Pasta "MINUTA - X" que ficou no HD ao lado da "LAVRADA - X" (quando o HD não deixou renomear):
+      // não volta para o Drive; o conteúdo dela já foi copiado para a LAVRADA.
+      const minutaVelha = c => {
+        const m = c.match(/^([^/]+)\/MINUTA - ([^/]+)/);
+        return !!m && hd.has(`${m[1]}/LAVRADA - ${m[2]}`);
+      };
       const tarefas = [];
       for (const [c, h] of hd) {
+        if (minutaVelha(c)) continue;
         if (h.pasta) { if (!dr.has(c)) tarefas.push(['pastaDrive', c]); continue; }
         const d = dr.get(c);
         const raizPlanilha = !c.includes('/');
@@ -98,7 +105,7 @@ const SincHD = {
         else if (d.tamanho && h.tamanho !== d.tamanho && !raizPlanilha) diferentes++;
       }
       for (const [c, d] of dr) {
-        if (hd.has(c)) continue;
+        if (hd.has(c) || minutaVelha(c)) continue;
         if (d.pasta) tarefas.push(['pastaHD', c]);
         else if (!d.mime.startsWith('application/vnd.google-apps')) tarefas.push(['baixar', c, d]);
       }

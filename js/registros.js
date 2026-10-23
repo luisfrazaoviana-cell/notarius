@@ -48,12 +48,33 @@ const Reg = {
       }
       if (novos.length) { await DB.putVarios(loja, novos); n += novos.length; }
     }
-    if (d.cfg && (d.cfg.atualizadoEm || 0) > (CFG.compartilhadoEm || 0)) {
-      const { atualizadoEm, ...resto } = d.cfg;
-      await salvarCfg({ ...resto, compartilhadoEm: atualizadoEm });
-      n++;
+    if (d.cfg) {
+      // Ajustes comuns: as listas por chave (repasses pagos, conferências, envios, folhas inutilizadas, tabelas)
+      // são unidas, para que um aparelho não apague o que o outro gravou; no mesmo item vale o lado mais recente.
+      const remNovo = (d.cfg.atualizadoEm || 0) > (CFG.compartilhadoEm || 0);
+      const m = {};
+      for (const k of CFG_COMPARTILHADA) {
+        const rem = d.cfg[k], loc = CFG[k];
+        if (rem === undefined) continue;
+        const mapa = v => v && typeof v === 'object' && !Array.isArray(v);
+        m[k] = mapa(rem) && mapa(loc) ? (remNovo ? { ...loc, ...rem } : { ...rem, ...loc }) : (remNovo ? rem : loc);
+      }
+      if (CFG_COMPARTILHADA.some(k => k in m && JSON.stringify(m[k]) !== JSON.stringify(CFG[k]))) {
+        await salvarCfg({ ...m, compartilhadoEm: Math.max(d.cfg.atualizadoEm || 0, CFG.compartilhadoEm || 0) });
+        n++;
+      }
     }
     return n;
+  },
+
+  // O Drive precisa receber o que este aparelho tem de novo (registro mais novo ou que lá não existe, ou ajustes diferentes).
+  precisaEnviar(local, remoto) {
+    if (!remoto) return true;
+    for (const loja of ['escrituras', 'orcamentos']) {
+      const rem = new Map((remoto[loja] || []).map(r => [r.id, r.atualizadoEm || 0]));
+      if (local[loja].some(r => !rem.has(r.id) || (r.atualizadoEm || 0) > rem.get(r.id))) return true;
+    }
+    return CFG_COMPARTILHADA.some(k => JSON.stringify(local.cfg[k] ?? null) !== JSON.stringify((remoto.cfg || {})[k] ?? null));
   },
 
   // Lê o arquivo do Drive, mescla, e grava de volta se este aparelho tiver novidades.
@@ -66,7 +87,7 @@ const Reg = {
       if (arq) remoto = JSON.parse(await (await Nuvem.baixar(arq.id)).text());
       const recebidos = remoto ? await this.mesclar(remoto) : 0;
       const local = await this.pacote();
-      if (!remoto || local.atualizadoEm > (remoto.atualizadoEm || 0)) {
+      if (this.precisaEnviar(local, remoto)) {
         const blob = new Blob([JSON.stringify(local)], { type: 'application/json' });
         if (arq) await Nuvem.atualizar(arq.id, blob); else await Nuvem.enviar(Pastas.app, ARQ_DADOS, blob);
       }

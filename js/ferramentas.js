@@ -340,6 +340,17 @@ function marcacao(s) {
     .replace(/__(.+?)__/g, '<b><u>$1</u></b>')
     .replace(/\/\/(.+?)\/\//g, '<i>$1</i>');
 }
+// Regra do usuário: o nome das partes fica SEMPRE em negrito, em todo o texto (inclusive dentro da qualificação
+// digitada). Nomes já marcados com ** não são marcados de novo.
+function negritarNomes(texto) {
+  const c = contexto();
+  const nomes = [...(c.A?.pessoas || []), ...(c.B?.pessoas || []), ...(c.Fal?.pessoas || [])].map(p => (p.nome || '').trim()).filter(n => n.length >= 5);
+  for (const n of nomes.sort((a, b) => b.length - a.length)) {
+    const re = new RegExp(`(?<![\\wÀ-ÿ*])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}(?![\\wÀ-ÿ*])`, 'gi');
+    texto = texto.replace(re, m => `**${m}**`);
+  }
+  return texto;
+}
 const v = id => $(id).value.trim();
 const F = (id, rotulo) => v(id) || `[[${rotulo} xxx]]`;
 const linhas = id => v(id).split('\n').map(s => s.trim()).filter(Boolean);
@@ -670,9 +681,10 @@ function gerarProcuracao(c) {
 // Corpo + local/data + assinaturas. Regras do usuário: assinaturas nunca sozinhas numa página (o fim do texto,
 // a data e as assinaturas ficam presos uns aos outros) e nunca duas linhas em branco seguidas (segurança).
 function fimMinuta(corpo, ct, ass) {
-  return `<p class="corpo junto">${marcacao(corpo)}</p>` +
+  return `<p class="corpo junto">${marcacao(negritarNomes(corpo))}</p>` +
     `<p class="c data junto">${marcacao(`${ct.cidadeData || '[[cidade/UF xxx]]'}, ${dataCurta(v('m_data')) || '[[data xxx]]'}.`)}</p>` +
-    ass.map(([n, r], i) => `<div class="ass${i < ass.length - 1 ? ' junto' : ''}">______________________________________________<br><b>${esc(n)}</b>${r ? '<br>' + esc(r) : ''}</div>`).join('');
+    // nomes nas assinaturas sem negrito (regra do usuário; no texto, os nomes das partes ficam em negrito)
+    ass.map(([n, r], i) => `<div class="ass${i < ass.length - 1 ? ' junto' : ''}">______________________________________________<br>${esc(n)}${r ? '<br>' + esc(r) : ''}</div>`).join('');
 }
 
 const TITULOS = {
@@ -773,7 +785,7 @@ function timbreHTML(modo) {
     return `<table width="794" style="width:${WORD_FOLHA.larg}pt;margin-left:-${WORD_FOLHA.esq}pt;border-collapse:collapse;margin-bottom:0" cellpadding="0" cellspacing="0"><tr>` +
       `<td bgcolor="${cor}" style="background:${cor};padding:10pt ${WORD_FOLHA.dir}pt 8pt ${WORD_FOLHA.esq}pt;border-bottom:3pt solid #c49a3a">` +
       `<table width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse"><tr>` +
-      (src ? `<td style="width:80pt;vertical-align:middle"><img src="${src}" width="74" height="74"></td>` : '') +
+      (src ? `<td style="width:108pt;vertical-align:middle"><img src="${src}" width="115" height="115"></td>` : '') +
       `<td style="vertical-align:middle;font-family:'Arial Narrow',Arial;color:#ffffff">` +
       `<span style="font-family:Georgia,serif;font-size:15pt;font-weight:bold;color:#ffffff;letter-spacing:2pt">${esc(l1)}</span><br>` +
       `<span style="font-size:9.5pt;color:#dfe5ef">${esc(l2)}</span><br>` +

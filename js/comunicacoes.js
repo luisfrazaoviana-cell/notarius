@@ -166,7 +166,8 @@ const Com = {
       </ul>
       <div class="hint">${r.resumoLivros.map(esc).join('<br>') || 'Nenhum ato lavrado nesta quinzena.'}</div>
       ${r.prob.length ? `<ul class="problemas">${r.prob.map(p => `<li class="${p.g}" data-esc="${esc(p.id)}">${p.g === 'erro' ? 'ERRO' : 'Atenção'}: ${esc(p.t)}</li>`).join('')}</ul>` : '<div class="okmsg">Sequência de folhas sem falhas.</div>'}
-      <div class="acoes">${btnConf}<button id="comInut">Folhas inutilizadas</button><button id="comAtualizar">Reler pastas do Drive</button></div>`;
+      <div class="hint">O livro só fecha se TODOS os atos estiverem no app. Ato lavrado fora das pastas dos parceiros (pela titular, por exemplo): use "Registrar ato sem pasta".</div>
+      <div class="acoes">${btnConf}<button id="comExterno">Registrar ato sem pasta</button><button id="comInut">Folhas inutilizadas</button><button id="comAtualizar">Reler pastas e traslados do Drive</button></div>`;
 
     // 2) CENSEC
     const linhas = r.doPeriodo.sort((a, b) => normLivro(a.livro).localeCompare(normLivro(b.livro)) || ((lerFolhas(a.folhas) || {}).ini || 0) - ((lerFolhas(b.folhas) || {}).ini || 0));
@@ -222,7 +223,7 @@ const Com = {
     let { q, lav } = this.ultimo;
     if (n === 2) {
       // A 2ª conferência relê as pastas do Drive antes de conferir de novo.
-      if (Nuvem.conectado()) { try { await Esc.escanear(); } catch (e) { return aviso('Não consegui reler o Drive: ' + e.message, 'erro'); } }
+      if (Nuvem.conectado()) { try { await Esc.escanear(); await Esc.lerLivroFolhas(); } catch (e) { return aviso('Não consegui reler o Drive: ' + e.message, 'erro'); } }
       lav = await this.lavradas();
     }
     const r = this.conferir(lav, q);
@@ -294,6 +295,31 @@ const Com = {
     this.render();
   },
 
+  // Ato lavrado no cartório que não tem pasta de parceiro: entra só para fechar a sequência do livro e as comunicações.
+  async atoSemPasta() {
+    const q = this.ultimo && this.ultimo.q;
+    const resp = await pedir('Registrar ato sem pasta', 'Ato lavrado no livro que não tem pasta de parceiro. Ele entra na conferência das folhas e nas comunicações (CENSEC, DOI e COAF).', [
+      { id: 'natureza', rotulo: 'Natureza (ex.: PROCURAÇÃO PÚBLICA, ESCRITURA PÚBLICA DE COMPRA E VENDA)', valor: 'ESCRITURA PÚBLICA DE COMPRA E VENDA' },
+      { id: 'a', rotulo: 'Outorgante(s) / mandante(s)', valor: '' },
+      { id: 'b', rotulo: 'Outorgado(s) / procurador(es)', valor: '' },
+      { id: 'livro', rotulo: 'Livro (ex.: 024-E)', valor: '' },
+      { id: 'folhas', rotulo: 'Folhas (ex.: 263/264)', valor: '' },
+      { id: 'data', rotulo: 'Data da lavratura', tipo: 'date', valor: q ? infoQuinzena(q).ini : hojeISO() },
+      { id: 'selo', rotulo: 'Selo digital', valor: '' }], ['Registrar', 'Cancelar']);
+    if (!resp) return;
+    if (!resp.livro || !lerFolhas(resp.folhas) || !resp.data) return aviso('Informe livro, folhas e data.', 'erro');
+    const nat = resp.natureza.toUpperCase() || 'OUTRA';
+    // Mesmo padrão das pastas: "... - OUTORGANTE x OUTORGADO" (o "x" fica minúsculo).
+    const esq = nomePasta(`${/PROCURA/.test(nat) ? 'PROCURACAO' : 'ATO'} LIVRO ${normLivro(resp.livro)} FLS ${formatarFolhas(resp.folhas).replace(/\//g, '-')} - ${resp.a || 'xxx'}`, 110);
+    const nome = esq + ' x ' + nomePasta(resp.b || 'xxx', 50);
+    const id = Esc.idEsc('SEM PASTA (CARTORIO)', nome);
+    await Reg.salvar('escrituras', { id, cartorioId: CFG.cartorioAtual, parceiro: 'SEM PASTA (CARTORIO)', nome, externo: true, situacao: 'LAVRADA',
+      natureza: nat, outorgantes: resp.a.toUpperCase(), outorgados: resp.b.toUpperCase(), livro: normLivro(resp.livro), folhas: formatarFolhas(resp.folhas),
+      dataLavratura: resp.data, selo: resp.selo, criadoEm: agora() });
+    aviso('Ato registrado: ' + nome);
+    this.render();
+  },
+
   async inutilizadas() {
     const resp = await pedir('Folhas inutilizadas', 'Folhas que ficaram em branco ou foram inutilizadas no livro (não são falha na sequência). Ex.: "030, 031v, 040 a 042".',
       [{ id: 'livro', rotulo: 'Livro (ex.: 024-P)', valor: '' }, { id: 'folhas', rotulo: 'Folhas inutilizadas', valor: '' }], ['Salvar', 'Cancelar']);
@@ -340,9 +366,15 @@ const Com = {
       if (t.id === 'comAutCensec') return this.autorizarCensec();
       if (t.id === 'comCsv') return this.csvCensec();
       if (t.id === 'comInut') return this.inutilizadas();
+      if (t.id === 'comExterno') return this.atoSemPasta();
       if (t.id === 'comCoafNeg') return this.coafNegativa();
       if (t.id === 'comAtualizar') {
-        try { await Esc.escanear(); aviso('Pastas relidas.'); } catch (e) { aviso(e.message, 'erro'); }
+        t.disabled = true;
+        try {
+          await Esc.escanear();
+          const r = await Esc.lerLivroFolhas((i, n) => { t.textContent = `Lendo traslados ${i}/${n}…`; });
+          aviso(`Pastas relidas. Livro e folhas encontrados em ${r.achados} de ${r.verificados} ato(s) lavrado(s) que estavam sem eles.`);
+        } catch (e) { aviso(e.message, 'erro'); }
         return this.render();
       }
       if (t.dataset.doi) return this.autorizarDoi(t.dataset.doi);

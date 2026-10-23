@@ -6,7 +6,11 @@ const NATUREZAS = ['ESCRITURA PÚBLICA DE COMPRA E VENDA', 'ESCRITURA PÚBLICA D
   'ESCRITURA PÚBLICA DECLARATÓRIA', 'PROCURAÇÃO PÚBLICA', 'ADITAMENTO / RE-RATIFICAÇÃO', 'OUTRA'];
 
 // Procuração: mesma estrutura de pastas da escritura ("MINUTA - PROCURACAO - MANDANTE x PROCURADOR").
-const ehProcuracao = r => /PROCURA/i.test((r && (r.natureza || r.nome)) || '');
+const ehProcuracao = r => !!r && /PROCURA/i.test(`${r.natureza || ''} ${r.nome || ''}`);
+// Natureza que o app supõe quando a pasta não diz qual é (o índice do HD pode corrigi-la).
+const NATUREZA_PADRAO = 'ESCRITURA PÚBLICA DE COMPRA E VENDA';
+// Pastas criadas no modo demonstração (ids curtos "dxxxxxxxx") não podem ir para os dados do Drive.
+const ehDeDemo = r => /^d[a-z0-9]{8}$/.test(r.driveId || '');
 
 const Esc = {
   parceiros: [],   // [{nome, id}]
@@ -38,13 +42,20 @@ const Esc = {
         const sit = m[1].toUpperCase();
         let r = existentes.get(id);
         if (!r) {
-          r = { id, cartorioId: CFG.cartorioAtual, parceiro: p.nome, nome: m[2], natureza: /PROCURA/i.test(m[2]) ? 'PROCURAÇÃO PÚBLICA' : 'ESCRITURA PÚBLICA DE COMPRA E VENDA', ...this.partesDoNome(m[2]), criadoEm: agora() };
+          r = { id, cartorioId: CFG.cartorioAtual, parceiro: p.nome, nome: m[2], natureza: /PROCURA/i.test(m[2]) ? 'PROCURAÇÃO PÚBLICA' : NATUREZA_PADRAO, ...this.partesDoNome(m[2]), criadoEm: agora() };
+        } else if (/PROCURA/i.test(m[2]) && r.natureza === NATUREZA_PADRAO) {
+          r.natureza = 'PROCURAÇÃO PÚBLICA'; // pasta de procuração que tinha ficado como compra e venda
         } else if (r.pasta === f.nome && r.driveId === f.id && r.situacao === sit && !r.semPasta) continue;
         Object.assign(r, { pasta: f.nome, driveId: f.id, situacao: sit, parceiroId: p.id, semPasta: false, atualizadoEm: agora() });
         mudadas.push(r);
       }
     }
-    for (const r of existentes.values()) if (!vistos.has(r.id) && !r.excluido && !r.semPasta && r.driveId) { r.semPasta = true; r.atualizadoEm = agora(); mudadas.push(r); }
+    for (const r of existentes.values()) {
+      if (vistos.has(r.id) || r.excluido) continue;
+      // No Google Drive, os exemplos do modo demonstração saem da lista (e da sincronização).
+      if (Nuvem === Drive && ehDeDemo(r)) { r.excluido = true; r.atualizadoEm = agora(); mudadas.push(r); }
+      else if (!r.semPasta && r.driveId) { r.semPasta = true; r.atualizadoEm = agora(); mudadas.push(r); }
+    }
     if (mudadas.length) { await DB.putVarios('escrituras', mudadas); Reg.agendar(); }
     await salvarCfg({ parceirosCache: this.parceiros.map(p => p.nome) });
     return mudadas.length;
@@ -213,7 +224,8 @@ const Esc = {
         if (!await confirmar('Tirar da lista', 'Tirar esta escritura da lista do Notarius? A pasta no Drive não é apagada.')) return;
         await Reg.excluir('escrituras', id); fecharModal(); App.atualizarTudo();
       };
-      this.carregarDocs(r);
+      if (r.externo) $('edDocs').innerHTML = '<div class="hint">Ato registrado sem pasta (lavrado fora das pastas dos parceiros). Serve para a conferência do livro e para as comunicações.</div>';
+      else this.carregarDocs(r);
     });
   },
 
@@ -316,6 +328,49 @@ const Esc = {
     this.carregarDocs(r);
   },
 
+  /* ------------------ Livro e folhas a partir do traslado ------------------ */
+  // Para os atos LAVRADOS sem livro/folhas: lê o cabeçalho do traslado em PDF ("LIVRO: 24 - E  FOLHAS: 119 / 120")
+  // na pasta 02 e, se não achar, o nome dos arquivos ("LIVRO 024E - FOLHAS 131"). Livro sem letra: E para escrituras
+  // e P para procurações. Nada é sobrescrito: só preenche o que está vazio.
+  extrairLivroFolhas(texto, proc) {
+    const t = String(texto || '').replace(/(\d)\s+(?=\d)/g, '$1').replace(/\s+/g, ' ');
+    const m = t.match(/LIVRO\s*(?:N[º°o]\.?)?\s*:?\s*-?\s*(\d{1,4})\s*-?\s*([A-Z](?![A-Z]))?\s*[-,.]*\s*(?:FOLHAS?|FLS\.?)\s*(?:N[º°o]\.?)?\s*:?\s*(\d{1,4}\s*V?(?:\s*(?:\/|A|E|-)\s*\d{1,4}\s*V?)?)/i);
+    if (!m) return null;
+    return { livro: normLivro(m[1] + '-' + (m[2] || (proc ? 'P' : 'E')).toUpperCase()), folhas: formatarFolhas(m[3]) };
+  },
+
+  async lerLivroFolhas(aoProgredir) {
+    const alvo = (await Reg.doCartorio('escrituras')).filter(r => r.situacao === 'LAVRADA' && r.driveId && !r.semPasta && (!r.livro || !r.folhas));
+    let achados = 0;
+    for (let i = 0; i < alvo.length; i++) {
+      const r = alvo[i], proc = ehProcuracao(r);
+      if (aoProgredir) aoProgredir(i + 1, alvo.length);
+      try {
+        const subs = (await Nuvem.listar(r.driveId)).filter(f => f.pasta);
+        const s2 = subs.find(s => s.nome.startsWith('02')), s1 = subs.find(s => s.nome.startsWith('01'));
+        const arq2 = s2 ? (await Nuvem.listar(s2.id)).filter(f => !f.pasta) : [];
+        const arq1 = s1 ? (await Nuvem.listar(s1.id)).filter(f => !f.pasta) : [];
+        const proprios = l => l.filter(f => !/CERTID|SUBST/i.test(f.nome)); // certidões de outros cartórios não contam
+        let res = null, origem = '';
+        // 1) Texto do traslado/livro em PDF (pasta 02).
+        const pdfs = proprios(arq2).filter(f => /\.pdf$/i.test(f.nome)).sort((a, b) => (/TRASLADO|LIVRO/i.test(b.nome) ? 1 : 0) - (/TRASLADO|LIVRO/i.test(a.nome) ? 1 : 0));
+        for (const f of pdfs.slice(0, 2)) {
+          res = this.extrairLivroFolhas(await textoDoPdf(await Nuvem.baixar(f.id), 2), proc);
+          if (res) { origem = 'traslado: ' + f.nome; break; }
+        }
+        // 2) Nome dos arquivos (02 e depois 01).
+        if (!res) for (const f of proprios([...arq2, ...arq1])) { res = this.extrairLivroFolhas(f.nome, proc); if (res) { origem = 'nome do arquivo: ' + f.nome; break; } }
+        if (!res) continue;
+        if (!r.livro) r.livro = res.livro;
+        if (!r.folhas) r.folhas = res.folhas;
+        r.livroFolhasOrigem = origem;
+        await Reg.salvar('escrituras', r);
+        achados++;
+      } catch (e) { console.warn('livro/folhas', r.nome, e); }
+    }
+    return { verificados: alvo.length, achados };
+  },
+
   /* --------------------- Importar índice do HD --------------------- */
   // Lê "00 - INDICE DAS ESCRITURAS.xlsx" e a aba DETALHE do repasse (cópias no Drive)
   // e preenche só os campos ainda vazios, sem apagar o que foi digitado no app.
@@ -338,7 +393,9 @@ const Esc = {
       const id = this.idEsc(...chave.split(/\/(.*)/s).slice(0, 2));
       const r = mudadas.get(id) || atual.get(id) || { id, cartorioId: CFG.cartorioAtual, criadoEm: agora() };
       let mudou = !atual.has(id);
-      for (const [k, v] of Object.entries(dados)) if ((r[k] === undefined || r[k] === '' || r[k] === null) && v !== '' && v != null) { r[k] = v; mudou = true; }
+      // Só preenche o que está vazio; a natureza suposta pelo app (compra e venda) cede à do índice.
+      const vazio = (k, atual) => atual === undefined || atual === '' || atual === null || (k === 'natureza' && atual === NATUREZA_PADRAO);
+      for (const [k, v] of Object.entries(dados)) if (vazio(k, r[k]) && v !== '' && v != null && r[k] !== v) { r[k] = v; mudou = true; }
       if (mudou) { r.atualizadoEm = agora(); mudadas.set(id, r); }
     };
     if (idx) {
@@ -384,6 +441,15 @@ const Esc = {
     };
   }
 };
+
+// Texto das primeiras páginas de um PDF (pdf.js).
+async function textoDoPdf(blob, paginas = 2) {
+  await pdfjs();
+  const doc = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
+  let t = '';
+  for (let p = 1; p <= Math.min(doc.numPages, paginas); p++) t += (await (await doc.getPage(p)).getTextContent()).items.map(i => i.str).join(' ') + '\n';
+  return t;
+}
 
 // Nome sugerido para o documento: tira extensão, "frente/verso" e numeração de página,
 // para que as partes do mesmo documento saiam com o mesmo nome. Nomes genéricos de câmera ficam como estão.

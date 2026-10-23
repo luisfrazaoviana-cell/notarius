@@ -664,9 +664,15 @@ function gerarProcuracao(c) {
     : A.pessoas.map(p => [p.nome.toUpperCase(), p.papel || 'Mandante']);
   ass.push([ct.lavrador || 'NOME DE QUEM LAVRA', cargo]);
   const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
-  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('', titulo) + p('corpo', corpo) +
-    p('c', `${ct.cidadeData || '[[cidade/UF xxx]]'}, ${dataCurta(v('m_data')) || '[[data xxx]]'}.`) +
-    ass.map(([n, r]) => `<div class="ass">______________________________________________<br><b>${esc(n)}</b>${r ? '<br>' + esc(r) : ''}</div>`).join('');
+  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('ementa', titulo) + fimMinuta(corpo, ct, ass);
+}
+
+// Corpo + local/data + assinaturas. Regras do usuário: assinaturas nunca sozinhas numa página (o fim do texto,
+// a data e as assinaturas ficam presos uns aos outros) e nunca duas linhas em branco seguidas (segurança).
+function fimMinuta(corpo, ct, ass) {
+  return `<p class="corpo junto">${marcacao(corpo)}</p>` +
+    `<p class="c data junto">${marcacao(`${ct.cidadeData || '[[cidade/UF xxx]]'}, ${dataCurta(v('m_data')) || '[[data xxx]]'}.`)}</p>` +
+    ass.map(([n, r], i) => `<div class="ass${i < ass.length - 1 ? ' junto' : ''}">______________________________________________<br><b>${esc(n)}</b>${r ? '<br>' + esc(r) : ''}</div>`).join('');
 }
 
 const TITULOS = {
@@ -716,9 +722,7 @@ function gerarMinuta() {
   ass.push([ct.lavrador || 'NOME DE QUEM LAVRA', cargo]);
 
   const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
-  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('', titulo) + p('corpo', corpo) +
-    p('c', `${ct.cidadeData || '[[cidade/UF xxx]]'}, ${dataCurta(v('m_data')) || '[[data xxx]]'}.`) +
-    ass.map(([n, r]) => `<div class="ass">______________________________________________<br><b>${esc(n)}</b><br>${esc(r)}</div>`).join('');
+  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('ementa', titulo) + fimMinuta(corpo, ct, ass);
 }
 
 function aoMudarModal() {
@@ -765,10 +769,11 @@ function timbreHTML(modo) {
     ...(ct.endereco ? ct.endereco.split('\n').map(x => [x.trim(), false]) : [['endereço do cartório – preencher em Ajustes', false]])].filter(([t]) => t);
   if (modo === 'word') {
     const linhaDir = direita.map(([t, forte]) => `<span style="font-size:${forte ? '9' : '8.5'}pt;color:${forte ? '#ffffff' : '#dfe5ef'}">${forte ? '<b>' + esc(t) + '</b>' : esc(t)}</span>`).join('<br>');
-    return `<table width="100%" style="width:100%;border-collapse:collapse;margin-bottom:0" cellpadding="0" cellspacing="0"><tr>` +
-      `<td bgcolor="${cor}" style="background:${cor};padding:8pt 10pt;border-bottom:3pt solid #c49a3a">` +
+    // Faixa de borda a borda da folha (recuo negativo = margem esquerda); o conteúdo fica alinhado às margens do texto.
+    return `<table width="794" style="width:${WORD_FOLHA.larg}pt;margin-left:-${WORD_FOLHA.esq}pt;border-collapse:collapse;margin-bottom:0" cellpadding="0" cellspacing="0"><tr>` +
+      `<td bgcolor="${cor}" style="background:${cor};padding:10pt ${WORD_FOLHA.dir}pt 8pt ${WORD_FOLHA.esq}pt;border-bottom:3pt solid #c49a3a">` +
       `<table width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse"><tr>` +
-      (src ? `<td style="width:70pt;vertical-align:middle"><img src="${src}" width="62" height="62"></td>` : '') +
+      (src ? `<td style="width:80pt;vertical-align:middle"><img src="${src}" width="74" height="74"></td>` : '') +
       `<td style="vertical-align:middle;font-family:'Arial Narrow',Arial;color:#ffffff">` +
       `<span style="font-family:Georgia,serif;font-size:15pt;font-weight:bold;color:#ffffff;letter-spacing:2pt">${esc(l1)}</span><br>` +
       `<span style="font-size:9.5pt;color:#dfe5ef">${esc(l2)}</span><br>` +
@@ -790,13 +795,19 @@ function formatarFolhas(s) {
 
 // Dados do ato logo abaixo do timbre (mudam a cada escritura; vazios saem em vermelho):
 // Livro na margem esquerda, Data no centro e Folhas na margem direita. Tabela sem bordas para o Word manter as posições.
-function atoHTML() {
-  const cel = (rot, val, faltando, alinh) => `<td style="width:33.3%;text-align:${alinh};padding:2pt 0 1pt;vertical-align:bottom">` +
+// Folha A4 do Word em pontos: largura e margens esquerda (3 cm) e direita (2 cm).
+const WORD_FOLHA = { larg: 595.3, esq: 85.05, dir: 56.7 };
+
+// Linha Livro/Data/Folhas logo abaixo da faixa, também de borda a borda (no Word por recuo negativo; na tela pelo CSS).
+function atoHTML(modo) {
+  const w = modo === 'word';
+  const cel = (rot, val, faltando, alinh, pad) => `<td style="width:33.3%;text-align:${alinh};padding:3pt ${pad[1] || 0}pt 1pt ${pad[0] || 0}pt;vertical-align:bottom">` +
     `<span style="font-family:Arial,sans-serif;font-size:7pt;letter-spacing:1.2px;color:#888">${rot}</span> ` +
     (val ? `<b style="font-size:10pt;color:${C().cor || '#14284b'}">${esc(val)}</b>` : `<b style="font-size:10pt;color:#d00000">${faltando} xxx</b>`) + '</td>';
-  return `<table class="ato" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0 0 10pt;border-bottom:1px solid #c49a3a"><tr>` +
-    cel('LIVRO', v('m_livro'), 'livro', 'left') + cel('DATA', v('m_data') ? dataBR(v('m_data')) : '', 'data', 'center') +
-    cel('FOLHAS', formatarFolhas(v('m_folhas')), 'folhas', 'right') + '</tr></table>';
+  const tab = w ? `width="794" style="width:${WORD_FOLHA.larg}pt;margin:0 0 10pt -${WORD_FOLHA.esq}pt;` : 'width="100%" style="width:100%;margin:0 0 10pt;';
+  return `<table class="ato" ${tab}border-collapse:collapse;border-bottom:1px solid #c49a3a" cellpadding="0" cellspacing="0"><tr>` +
+    cel('LIVRO', v('m_livro'), 'livro', 'left', w ? [WORD_FOLHA.esq] : []) + cel('DATA', v('m_data') ? dataBR(v('m_data')) : '', 'data', 'center', []) +
+    cel('FOLHAS', formatarFolhas(v('m_folhas')), 'folhas', 'right', w ? [0, WORD_FOLHA.dir] : []) + '</tr></table>';
 }
 
 function blobMinutaWord() {
@@ -806,9 +817,9 @@ function blobMinutaWord() {
     div.Folha{page:Folha}
     body{font-family:'Arial Narrow',Arial,sans-serif;font-size:12pt} p{text-align:justify;margin:0 0 12pt;line-height:150%}
     .dir{text-align:right} .c{text-align:center} .corpo{text-indent:3.75cm} .red{color:#FF0000;font-weight:bold}
-    .ass{text-align:center;margin-top:28pt;page-break-inside:avoid}`;
+    .ass{text-align:center;margin-top:1cm;page-break-inside:avoid} p.data{margin-bottom:0} p.ementa{margin-bottom:18pt} .junto{page-break-after:avoid}`;
   const word = '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->';
-  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">${word}<style>${estilo}</style></head><body><div class="Folha">${$('mDoc').innerHTML.replace(/^<div class="timbre">[\s\S]*?<\/div><\/div><\/div>/, timbreHTML('word'))}</div></body></html>`;
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">${word}<style>${estilo}</style></head><body><div class="Folha">${$('mDoc').innerHTML.replace(/^<div class="timbre">[\s\S]*?<\/div><\/div><\/div>/, timbreHTML('word')).replace(/<table class="ato"[\s\S]*?<\/table>/, atoHTML('word'))}</div></body></html>`;
   return new Blob(['﻿', doc], { type: 'application/msword' });
 }
 

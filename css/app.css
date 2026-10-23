@@ -20,7 +20,7 @@ a { color: var(--accent); }
 /* Timbre da minuta: faixa azul (sem rodapé, para a assinatura eletrônica) */
 .doc .timbre { display: flex; align-items: center; gap: 14px; background: var(--accent); color: #fff; padding: 12px 16px;
   border-bottom: 3px solid var(--gold); margin-bottom: 0; text-align: left; line-height: 1.35; }
-.doc .timbre img { width: 68px; height: 68px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,.25); flex: none; }
+.doc .timbre img { width: 80px; height: 80px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,.25); flex: none; }
 .doc .timbre .esq { flex: 1; min-width: 0; }
 .doc .timbre .t1 { font-family: Georgia, serif; font-weight: 700; font-size: 15pt; letter-spacing: 2px; white-space: nowrap; }
 .doc .timbre .t2 { font-size: 9.5pt; color: #dfe5ef; }
@@ -200,7 +200,25 @@ fieldset { border: 0; padding: 0; margin: 0; }
 .doc .dir { text-align: right; } .doc .c { text-align: center; }
 .doc .corpo { text-indent: 3.75cm; }
 .doc .red { color: #d00000; font-weight: 700; }
-.doc .ass { text-align: center; margin-top: 28pt; break-inside: avoid; }
+.doc .ass { text-align: center; margin-top: 1cm; break-inside: avoid; } /* espaço para assinar (minuta = livro: todas as partes) */
+.doc p.data { margin-bottom: 0; }
+.doc p.ementa { margin-bottom: 1.5em; } /* 1 linha entre a ementa e o início do texto (pedido do usuário) */
+.doc .junto { break-after: avoid; page-break-after: avoid; }
+/* Faixa do timbre e linha Livro/Data/Folhas de borda a borda da folha (anulam o padding da .doc); conteúdo alinhado ao texto */
+.doc .timbre { margin: -2cm -2cm 0 -3cm; padding: 14px 2cm 12px 3cm; }
+.doc table.ato { width: calc(100% + 5cm) !important; margin-left: -3cm !important; margin-right: -2cm; }
+.doc table.ato td:first-child { padding-left: 3cm !important; }
+.doc table.ato td:last-child { padding-right: 2cm !important; }
+@media (max-width: 700px) {
+  .doc .timbre { margin: -14px -14px 0; padding: 12px 14px; }
+  .doc table.ato { width: calc(100% + 28px) !important; margin-left: -14px !important; }
+  .doc table.ato td:first-child { padding-left: 14px !important; }
+  .doc table.ato td:last-child { padding-right: 14px !important; }
+}
+@media print {
+  .doc .timbre { margin: 0 0 0 -3cm; width: 21cm; box-sizing: border-box; }
+  .doc table.ato { width: 21cm !important; }
+}
 
 /* Documentos da escritura */
 .docs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

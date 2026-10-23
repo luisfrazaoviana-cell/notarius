@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 150" width="520" height="150">
+  <defs>
+    <path id="sup" d="M 34 120 A 86 86 0 0 1 206 120"/>
+    <path id="inf" d="M 30 120 A 90 90 0 0 0 210 120"/>
+  </defs>
+  <g transform="translate(5,5) scale(0.5833)">
+    <circle cx="120" cy="120" r="116" fill="#14284b"/>
+    <circle cx="120" cy="120" r="108" fill="none" stroke="#c49a3a" stroke-width="1.5"/>
+    <circle cx="120" cy="120" r="68" fill="none" stroke="#c49a3a" stroke-width="1.5"/>
+    <text font-family="Georgia, 'Times New Roman', serif" font-size="16" font-weight="700" letter-spacing="2.4" fill="#ffffff"><textPath href="#sup" startOffset="50%" text-anchor="middle">CARTÓRIO SANTANA</textPath></text>
+    <text font-family="Georgia, 'Times New Roman', serif" font-size="10.5" letter-spacing="1.3" fill="#e8d3a2"><textPath href="#inf" startOffset="50%" text-anchor="middle">NOTAS · REGISTRO CIVIL · BUJARU</textPath></text>
+    <circle cx="31" cy="128" r="2.5" fill="#c49a3a"/><circle cx="209" cy="128" r="2.5" fill="#c49a3a"/>
+    <g transform="translate(72,80) scale(0.8)">
+      <path d="M8 74 Q32 62 58 74 L58 30 Q32 18 8 30 Z" fill="#ffffff"/>
+      <path d="M110 74 Q86 62 60 74 L60 30 Q86 18 110 30 Z" fill="#ffffff" opacity=".75"/>
+      <path d="M8 82 Q32 70 59 82 Q86 70 110 82" fill="none" stroke="#c49a3a" stroke-width="3"/>
+      <path d="M92 2 C108 10 110 26 100 40 L76 70 L72 68 L94 36 C100 26 98 14 92 2 Z" fill="#c49a3a"/>
+    </g>
+  </g>
+  <line x1="162" y1="22" x2="162" y2="128" stroke="#c49a3a" stroke-width="1.5"/>
+  <text x="182" y="42" font-family="'Segoe UI', Arial, sans-serif" font-size="13" letter-spacing="6.5" fill="#c49a3a">CARTÓRIO</text>
+  <text x="180" y="88" font-family="Georgia, 'Times New Roman', serif" font-size="46" font-weight="700" letter-spacing="4" fill="#14284b">SANTANA</text>
+  <line x1="182" y1="104" x2="300" y2="104" stroke="#c49a3a" stroke-width="1.3"/>
+  <path d="M312 98 l6 6 -6 6 -6 -6 z" fill="#c49a3a"/>
+  <line x1="324" y1="104" x2="442" y2="104" stroke="#c49a3a" stroke-width="1.3"/>
+  <text x="182" y="130" font-family="Georgia, 'Times New Roman', serif" font-size="16" font-style="italic" fill="#14284b">Notas &amp; Registro Civil · Bujaru</text>
+</svg>

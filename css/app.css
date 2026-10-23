@@ -20,14 +20,14 @@ a { color: var(--accent); }
 /* Timbre da minuta: faixa azul (sem rodapé, para a assinatura eletrônica) */
 .doc .timbre { display: flex; align-items: center; gap: 14px; background: var(--accent); color: #fff; padding: 12px 16px;
   border-bottom: 3px solid var(--gold); margin-bottom: 0; text-align: left; line-height: 1.35; }
-.doc .timbre img { width: 80px; height: 80px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,.25); flex: none; }
+.doc .timbre img { width: 120px; height: 120px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,.25); flex: none; }
 .doc .timbre .esq { flex: 1; min-width: 0; }
 .doc .timbre .t1 { font-family: Georgia, serif; font-weight: 700; font-size: 15pt; letter-spacing: 2px; white-space: nowrap; }
 .doc .timbre .t2 { font-size: 9.5pt; color: #dfe5ef; }
 .doc .timbre .t3 { color: #e8d3a2; font-size: 9pt; letter-spacing: .5px; }
 .doc .timbre .dir { text-align: right; border-left: 1px solid var(--gold); padding-left: 12px; font-size: 8.5pt; color: #dfe5ef; white-space: nowrap; line-height: 1.45; }
 .doc .timbre .dir .forte { color: #fff; font-weight: 700; font-size: 9pt; }
-@media (max-width: 700px) { .doc .timbre { flex-wrap: wrap; } .doc .timbre .dir { white-space: normal; border-left: 0; padding-left: 0; text-align: left; } }
+@media (max-width: 700px) { .doc .timbre { flex-wrap: wrap; } .doc .timbre img { width: 80px; height: 80px; } .doc .timbre .dir { white-space: normal; border-left: 0; padding-left: 0; text-align: left; } }
 @media print { .doc .timbre { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 .marca small { display: block; font-size: 11px; opacity: .8; }
 .lateral nav { display: flex; flex-direction: column; gap: 2px; }

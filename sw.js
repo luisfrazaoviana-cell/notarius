@@ -1,6 +1,6 @@
 // Guarda os arquivos do app e as bibliotecas para abrir mesmo sem internet.
 // Os dados (Drive) não passam por aqui.
-const VERSAO = 'notarius-0.4.1';
+const VERSAO = 'notarius-0.4.2';
 const ARQUIVOS = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icones/icone-192.png', 'icones/icone-512.png', 'marca/logo-selo.png',
   'js/config.js', 'js/dados.js', 'js/base.js', 'js/nuvem.js', 'js/hd.js', 'js/registros.js', 'js/ferramentas.js',
   'js/escrituras.js', 'js/orcamentos.js', 'js/controle.js', 'js/comunicacoes.js', 'js/receitas.js', 'js/acervo.js', 'js/sinchd.js', 'js/app.js'];
@@ -15,8 +15,8 @@ self.addEventListener('fetch', ev => {
   if (ev.request.method !== 'GET' || url.hostname.endsWith('googleapis.com') || url.hostname === 'accounts.google.com') return;
   const cdn = /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net/.test(url.hostname);
   if (url.origin === location.origin) {
-    // App: rede primeiro (pega atualizações), cache se estiver sem internet.
-    ev.respondWith(fetch(ev.request).then(r => { const c = r.clone(); caches.open(VERSAO).then(k => k.put(ev.request, c)); return r; })
+    // App: rede primeiro, sem o cache do navegador (a versão nova chega na primeira abertura); sem internet, usa a cópia guardada.
+    ev.respondWith(fetch(ev.request.url, { cache: 'no-cache', credentials: 'same-origin' }).then(r => { const c = r.clone(); caches.open(VERSAO).then(k => k.put(ev.request, c)); return r; })
       .catch(() => caches.match(ev.request)));
   } else if (cdn) {
     // Bibliotecas com versão fixa: cache primeiro.

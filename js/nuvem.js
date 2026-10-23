@@ -24,8 +24,26 @@ const Drive = {
   UP: 'https://www.googleapis.com/upload/drive/v3',
 
   conectado() { return !!this.token && Date.now() < this.expira; },
+  // Falta pouco para a permissão do Google (1 hora) vencer.
+  venceLogo() { return !this.token || this.expira - Date.now() < 5 * 60e3; },
 
-  async entrar() {
+  // A permissão fica guardada neste aparelho enquanto vale (cerca de 1 hora): reabrir o app não pede login.
+  guardar() { try { localStorage.setItem('notarius_google', JSON.stringify({ t: this.token, e: this.expira })); } catch {} },
+  restaurar() {
+    try {
+      const s = JSON.parse(localStorage.getItem('notarius_google') || 'null');
+      if (s && s.t && s.e - Date.now() > 60e3) { this.token = s.t; this.expira = s.e; return true; }
+    } catch {}
+    return false;
+  },
+
+  // Uma entrada por vez (o toque na tela e o botão "Entrar" podem chamar ao mesmo tempo).
+  entrar() {
+    if (this.entrando) return this.entrando;
+    this.entrando = this._entrar().finally(() => { this.entrando = null; });
+    return this.entrando;
+  },
+  async _entrar() {
     const clientId = CFG.clientId || window.NOTARIUS_CLIENT_ID;
     if (!clientId) throw new Error('Falta o ID de cliente do Google (veja Ajustes).');
     await carregarScript('https://accounts.google.com/gsi/client');
@@ -37,9 +55,10 @@ const Drive = {
           if (r.error) return err(new Error(r.error_description || r.error));
           this.token = r.access_token;
           this.expira = Date.now() + (Number(r.expires_in) - 60) * 1000;
+          this.guardar();
           ok();
         },
-        error_callback: e => err(new Error(e.type === 'popup_closed' ? 'Janela do Google fechada.' : (e.message || e.type)))
+        error_callback: e => err(new Error(e.type === 'popup_closed' ? 'Janela do Google fechada.' : e.type === 'popup_failed_to_open' ? 'Toque na tela para conectar ao Google Drive.' : (e.message || e.type)))
       });
       this.cliente.requestAccessToken({ prompt: '' });
     });
@@ -47,7 +66,8 @@ const Drive = {
 
   sair() {
     if (this.token && window.google) google.accounts.oauth2.revoke(this.token, () => {});
-    this.token = null; this.expira = 0;
+    this.token = null; this.expira = 0; this.saiu = true; // depois de "Sair", o toque na tela não reconecta
+    try { localStorage.removeItem('notarius_google'); } catch {}
   },
 
   // Chamada à API com nova tentativa quando o Google está instável (429/5xx, limite de uso) ou sem rede.

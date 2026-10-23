@@ -174,6 +174,7 @@ const App = {
   },
 
   async entrar() {
+    Drive.saiu = false;
     try {
       await Drive.entrar();
       aviso('Conectado ao Google Drive.');
@@ -219,6 +220,18 @@ const App = {
     this.ir('inicio');
 
     if (Nuvem === Demo) await this.aposConectar();
+    // Google Drive sem pedir login a cada abertura: usa a permissão guardada enquanto vale (≈1 hora);
+    // depois disso, o primeiro toque em qualquer lugar reconecta, e perto de vencer o toque renova.
+    else if (Drive.restaurar()) { this.aposConectar(); this.statusAjustes(); }
+    document.addEventListener('click', ev => {
+      if (Nuvem !== Drive || Drive.saiu || Drive.entrando || !Drive.venceLogo()) return;
+      if (ev.target.closest('#btnEntrar, #ajEntrar, #ajSair, #ajModo')) return;
+      const estava = Drive.conectado();
+      Drive.entrar().then(() => {
+        if (!estava) { aviso('Conectado ao Google Drive.'); this.aposConectar(); }
+        this.statusAjustes();
+      }).catch(e => aviso(e.message, 'erro'));
+    }, true);
     // Sincroniza a cada 2 minutos e ao voltar para o app.
     setInterval(() => { if (Nuvem.conectado() && !document.hidden) Reg.sincronizar().catch(() => {}); }, 120000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden && Nuvem.conectado()) Reg.sincronizar().catch(() => {}); });

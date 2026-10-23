@@ -86,7 +86,9 @@ const Com = {
     const doPeriodo = lavradas.filter(e => e.dataLavratura && e.dataLavratura >= qi.ini && e.dataLavratura <= qi.fim);
     const prob = [];
     const nomeAto = e => `${e.nome}${e.livro ? ` (livro ${normLivro(e.livro)}, fls. ${formatarFolhas(e.folhas) || '?'})` : ''}`;
-    lavradas.filter(e => !e.dataLavratura).forEach(e => prob.push({ g: 'aviso', id: e.id, t: `Ato LAVRADO sem data da lavratura: ${e.nome}. Sem a data ele não entra em nenhuma quinzena.` }));
+    // Lavradas sem data: um aviso só (a lista completa fica no próprio aviso).
+    const semData = lavradas.filter(e => !e.dataLavratura);
+    if (semData.length) prob.push({ g: 'aviso', id: semData[0].id, t: `${semData.length} ato(s) LAVRADO(S) sem data da lavratura (não entram em nenhuma quinzena; se algum for desta quinzena, informe a data): ${semData.map(e => e.nome).join('; ')}.` });
     doPeriodo.forEach(e => {
       if (!e.livro) prob.push({ g: 'erro', id: e.id, t: `Sem número do livro: ${e.nome}` });
       if (!lerFolhas(e.folhas)) prob.push({ g: 'erro', id: e.id, t: `Sem folhas: ${e.nome}` });
@@ -240,6 +242,7 @@ const Com = {
     let { q, lav } = this.ultimo;
     if (n === 2) {
       // A 2ª conferência relê as pastas do Drive antes de conferir de novo.
+      if (Nuvem === Drive && Drive.venceLogo()) { try { await Drive.entrar(); } catch (e) { return aviso(e.message, 'erro'); } }
       if (Nuvem.conectado()) { try { await Esc.escanear(); await Esc.lerLivroFolhas(); } catch (e) { return aviso('Não consegui reler o Drive: ' + e.message, 'erro'); } }
       lav = await this.lavradas();
     }
@@ -386,6 +389,7 @@ const Com = {
       if (t.id === 'comExterno') return this.atoSemPasta();
       if (t.id === 'comCoafNeg') return this.coafNegativa();
       if (t.id === 'comAtualizar') {
+        if (Nuvem === Drive && Drive.venceLogo()) { try { await Drive.entrar(); } catch (e) { return aviso(e.message, 'erro'); } }
         t.disabled = true;
         try {
           await Esc.escanear();

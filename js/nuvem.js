@@ -25,7 +25,8 @@ const Drive = {
 
   conectado() { return !!this.token && Date.now() < this.expira; },
   // Falta pouco para a permissão do Google (1 hora) vencer.
-  venceLogo() { return !this.token || this.expira - Date.now() < 5 * 60e3; },
+  // (15 minutos de folga: a sincronização com o HD leva alguns minutos e não pode ficar sem conexão no meio.)
+  venceLogo() { return !this.token || this.expira - Date.now() < 15 * 60e3; },
 
   // A permissão fica guardada neste aparelho enquanto vale (cerca de 1 hora): reabrir o app não pede login.
   guardar() { try { localStorage.setItem('notarius_google', JSON.stringify({ t: this.token, e: this.expira })); } catch {} },

@@ -60,6 +60,8 @@ const SincHD = {
 
   async rodar() {
     if (this.rodando) return;
+    // Renova a conexão com o Google antes (ainda dentro do clique), para não vencer no meio da sincronia.
+    if (Nuvem === Drive && Drive.venceLogo()) { try { await Drive.entrar(); } catch (e) { return aviso(e.message, 'erro'); } }
     if (!await HD.liberada(HD.chave(), true)) return aviso(`Escolha a pasta ${C().pasta} do HD em Ajustes.`, 'erro');
     this.rodando = true; this.parar = false;
     const b = $('ajSincHD'); b.textContent = 'Parar'; b.onclick = () => { this.parar = true; };
@@ -109,7 +111,7 @@ const SincHD = {
         if (d.pasta) tarefas.push(['pastaHD', c]);
         else if (!d.mime.startsWith('application/vnd.google-apps')) tarefas.push(['baixar', c, d]);
       }
-      this.log(`${tarefas.filter(t => t[0] === 'enviar').length} para enviar ao Drive, ${tarefas.filter(t => t[0] === 'baixar').length} para baixar ao HD.`);
+      this.log(`${tarefas.filter(t => t[0] === 'enviar' || t[0] === 'atualizar').length} para enviar ao Drive, ${tarefas.filter(t => t[0] === 'baixar').length} para baixar ao HD.`);
 
       for (let i = 0; i < tarefas.length && !this.parar; i++) {
         const [tipo, c, a, b2] = tarefas[i];

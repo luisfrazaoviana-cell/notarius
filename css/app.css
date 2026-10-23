@@ -77,6 +77,7 @@ main { margin-left: var(--side); padding: 22px 26px 60px; max-width: 1240px; }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
 .kpi small { color: var(--muted); font-size: 12px; display: block; }
 .kpi b { font-size: 22px; font-variant-numeric: tabular-nums; display: block; margin-top: 2px; }
+@media (max-width: 700px) { .kpi b { font-size: 17px; white-space: nowrap; } }
 .kpi span { font-size: 12px; color: var(--muted); }
 .kpi.destaque { background: var(--accent); color: #fff; border-color: var(--accent); }
 .kpi.destaque small, .kpi.destaque span { color: rgba(255,255,255,.8); }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1d5c4d">
+<meta name="theme-color" content="#14284b">
 <title>Notarius</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icones/icone-192.png">
@@ -21,21 +21,23 @@
   <symbol id="i-ctl" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
   <symbol id="i-acv" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
   <symbol id="i-aj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+  <symbol id="i-com" viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></symbol>
   <symbol id="i-mais" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></symbol>
 </svg>
 
 <aside class="lateral">
-  <div class="marca"><div class="logo">N</div><div><b>Notarius</b><small>Gestão Notarial e Financeira</small></div></div>
+  <div class="marca"><img id="logoCartorio" class="logoimg hidden" alt=""><div class="logo" id="logoN">N</div><div><b>Notarius</b><small id="marcaSub">Gestão Notarial e Financeira</small></div></div>
   <nav id="navLateral">
     <button data-view="inicio"><svg class="ico"><use href="#i-inicio"/></svg>Início</button>
     <button data-view="escrituras"><svg class="ico"><use href="#i-esc"/></svg>Escrituras</button>
     <button data-view="ferramentas"><svg class="ico"><use href="#i-calc"/></svg>Calculadora e minutas</button>
     <button data-view="orcamentos"><svg class="ico"><use href="#i-orc"/></svg>Orçamentos</button>
     <button data-view="controle"><svg class="ico"><use href="#i-ctl"/></svg>Controle financeiro</button>
+    <button data-view="comunicacoes"><svg class="ico"><use href="#i-com"/></svg>Comunicações</button>
     <button data-view="acervo"><svg class="ico"><use href="#i-acv"/></svg>Acervo</button>
     <button data-view="ajustes"><svg class="ico"><use href="#i-aj"/></svg>Ajustes</button>
   </nav>
-  <div class="rodape">Cartório de Santana de Bujaru/PA</div>
+  <div class="rodape" id="rodapeCartorio">Cartório de Santana de Bujaru/PA</div>
 </aside>
 
 <nav class="inferior" id="navInferior">
@@ -49,6 +51,7 @@
 <main>
   <div class="topo">
     <h1 id="titulo">Início</h1>
+    <div class="cartorios" id="selCartorio"></div>
     <div class="status">
       <span class="chip" id="chipNuvem" data-view="ajustes"><span class="bola"></span><span>Nuvem</span></span>
       <span class="chip hidden" id="chipHD" data-view="ajustes"><span class="bola"></span><span>HD</span></span>
@@ -86,7 +89,9 @@
       <input type="search" id="escBusca" placeholder="Buscar por partes, imóvel, selo…">
       <select id="escParceiro"><option value="">Todos os parceiros</option></select>
       <select id="escSituacao"><option value="">Todas</option><option>MINUTA</option><option>LAVRADA</option></select>
+      <select id="escTipo"><option value="">Escrituras e procurações</option><option value="esc">Só escrituras</option><option value="proc">Só procurações</option></select>
       <button class="prim" id="escNova">+ Nova escritura</button>
+      <button class="prim" id="escNovaProc">+ Nova procuração</button>
       <button id="escAtualizar">Atualizar do Drive</button>
       <button id="escImportar">Importar índice</button>
     </div>
@@ -160,6 +165,7 @@
             <option value="inventario">Inventário e partilha</option>
             <option value="divorcio">Divórcio consensual com partilha</option>
             <option value="dacao">Dação em pagamento</option>
+            <option value="procuracao">Procuração pública</option>
           </select>
           <label class="f" for="cImovel">Imóvel</label>
           <select id="cImovel"><option value="urbano">Urbano</option><option value="rural">Rural</option></select>
@@ -198,6 +204,7 @@
             <option value="inventario">Inventário e partilha</option>
             <option value="divorcio">Divórcio consensual com partilha</option>
             <option value="dacao">Dação em pagamento</option>
+            <option value="procuracao">Procuração pública</option>
           </select>
           <div class="linha2">
             <div><label class="f" for="m_imovel">Imóvel</label>
@@ -212,7 +219,7 @@
             <div><label class="f" for="m_num">Nº da minuta</label><input id="m_num" type="text" placeholder="ex.: 045"></div>
             <div><label class="f" for="m_data">Data da lavratura</label><input id="m_data" type="date"></div>
             <div><label class="f" for="m_livro">Livro</label><input id="m_livro" type="text"></div>
-            <div><label class="f" for="m_folhas">Folhas</label><input id="m_folhas" type="text"></div>
+            <div><label class="f" for="m_folhas">Folhas</label><input id="m_folhas" type="text" placeholder="010/011"></div>
           </div>
 
           <fieldset data-modal="inventario">
@@ -241,7 +248,7 @@
           <label class="f" for="m_aQual">Qualificação completa</label>
           <textarea id="m_aQual" style="min-height:110px"></textarea>
 
-          <fieldset data-modal="cv dacao">
+          <fieldset data-modal="cv dacao procuracao">
             <h3 id="lblB">Compradores</h3>
             <label class="f" for="m_bNomes">Nomes (um por linha; opcional "NOME | papel")</label>
             <textarea id="m_bNomes"></textarea>
@@ -249,6 +256,33 @@
             <select id="m_bGen"><option value="M">Masculino / misto</option><option value="F">Feminino</option></select>
             <label class="f" for="m_bQual">Qualificação completa</label>
             <textarea id="m_bQual" style="min-height:110px"></textarea>
+          </fieldset>
+
+          <fieldset data-modal="procuracao">
+            <h3>Poderes</h3>
+            <label class="f" for="m_procTipo">Finalidade</label>
+            <select id="m_procTipo">
+              <option value="imovel">Imóvel – administrar, regularizar e vender</option>
+              <option value="previdenciaria">Previdenciária – INSS e benefício</option>
+              <option value="ampla">Ampla – órgãos, bancos, imóveis e advogados</option>
+              <option value="outra">Outra – escrever os poderes</option>
+            </select>
+            <div id="boxProcBem">
+              <label class="f" for="m_procBem">Descrição do imóvel (com matrícula e cartório)</label>
+              <textarea id="m_procBem" placeholder="IMÓVEL constituído pela casa nº ..., registrado no ... sob a matrícula nº ..."></textarea>
+            </div>
+            <label class="f" for="m_procPoderes" id="lblProcPoderes">Poderes adicionais (opcional)</label>
+            <textarea id="m_procPoderes" placeholder="para representar perante ..., podendo ..."></textarea>
+            <div class="linha2">
+              <div><label class="f" for="m_procPrazo">Validade (em branco = sem prazo)</label><input id="m_procPrazo" type="text" placeholder="12 (doze) meses"></div>
+              <div><label class="f" for="m_procSubst">Substabelecimento</label>
+                <select id="m_procSubst"><option value="sim">Permitido</option><option value="nao">Vedado</option></select></div>
+            </div>
+            <div class="checks">
+              <label><input type="checkbox" id="m_procIrrev"> Irrevogável e irretratável (art. 684 do CC)</label>
+            </div>
+            <label class="f" for="m_procRogo">Assinatura a rogo (se o mandante não sabe ou não pode assinar)</label>
+            <textarea id="m_procRogo" placeholder="quem assina a rogo e as duas testemunhas, com qualificação"></textarea>
           </fieldset>
 
           <fieldset data-modal="inventario divorcio">
@@ -290,6 +324,7 @@
             <input id="m_divida" type="text" placeholder="originada do contrato de ..., firmado em ...">
           </fieldset>
 
+          <fieldset data-modal="cv inventario divorcio dacao">
           <h3>Imóvel</h3>
           <label class="f" for="m_local">Localização (só endereço – Lei 7.433/85)</label>
           <textarea id="m_local"></textarea>
@@ -356,6 +391,8 @@
           <h3>CNIB e selo</h3>
           <label class="f" for="m_hash">Códigos HASH da CNIB (um por linha)</label>
           <textarea id="m_hash"></textarea>
+          </fieldset>
+          <fieldset data-modal="procuracao"><h3>Selo</h3></fieldset>
           <label class="f" for="m_selo">Selo</label>
           <input id="m_selo" type="text">
         </div>
@@ -399,8 +436,8 @@
           <div class="checks" style="align-self:end"><label><input type="checkbox" id="orcRural"> Imóvel rural (30%)</label></div>
         </div>
         <div class="linha2">
-          <div class="checks" style="align-self:end"><label><input type="checkbox" id="orcCert" checked> Certidão da matrícula (453)</label></div>
-          <div><label class="f" for="orcDil">Diligências (695)</label><input id="orcDil" type="number" min="0" value="1"></div>
+          <div class="checks" style="align-self:end"><label><input type="checkbox" id="orcCert" checked> Certidão da matrícula</label></div>
+          <div><label class="f" for="orcDil">Diligências</label><input id="orcDil" type="number" min="0" value="1"></div>
         </div>
         <label class="f" for="orcOutros">Outros valores – transporte, avulsos (R$)</label>
         <input id="orcOutros" type="text" inputmode="decimal">
@@ -444,6 +481,22 @@
     </div>
   </section>
 
+  <!-- ============================ COMUNICAÇÕES ============================ -->
+  <section class="view" id="view-comunicacoes">
+    <div class="barra">
+      <select id="comQuinzena"></select>
+      <label class="hint" for="comInicio" style="align-self:center">Controle a partir de</label>
+      <input type="date" id="comInicio" style="max-width:170px">
+    </div>
+    <div class="kpis" id="comKpis"></div>
+    <div class="card" id="comConf"></div>
+    <div class="card" id="comCensec"></div>
+    <div class="grid">
+      <div class="card" id="comDoi"></div>
+      <div class="card" id="comCoaf"></div>
+    </div>
+  </section>
+
   <!-- ============================ ACERVO ============================ -->
   <section class="view" id="view-acervo">
     <div class="barra">
@@ -461,6 +514,7 @@
   <section class="view" id="view-mais">
     <div class="lista">
       <div class="item" data-ir="controle"><div><div class="t">Controle financeiro</div><div class="s">Arrecadação, a receber e repasse do dia 5.</div></div></div>
+      <div class="item" data-ir="comunicacoes"><div><div class="t">Comunicações</div><div class="s">CENSEC, DOI e COAF dos atos lavrados, com conferência das folhas.</div></div></div>
       <div class="item" data-ir="acervo"><div><div class="t">Acervo</div><div class="s">Pesquisar escrituras e documentos.</div></div></div>
       <div class="item" data-ir="ajustes"><div><div class="t">Ajustes</div><div class="s">Google Drive, HD, backup e dados do orçamento.</div></div></div>
     </div>
@@ -478,7 +532,7 @@
           <input id="ajClientId" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com">
           <div class="hint">Configuração feita uma vez, no Google Cloud (veja o guia CONFIGURAR GOOGLE.md).</div>
           <label class="f" for="ajRaiz">Pasta das escrituras no Drive (link ou ID, opcional)</label>
-          <input id="ajRaiz" type="text" placeholder="em branco = procura &quot;ESCRITURAS ORGANIZADAS&quot;">
+          <input id="ajRaiz" type="text" placeholder="em branco = procura a pasta do cartório pelo nome">
           <div class="acoes"><button class="prim" id="ajEntrar">Entrar com Google</button><button id="ajSair">Sair</button></div>
         </div>
         <div class="hint" id="ajNuvemStatus"></div>
@@ -499,7 +553,7 @@
           <p class="hint" style="margin-top:0">O HD fica sincronizado com o Drive: o que falta de um lado é copiado para o outro, sem duplicar e sem apagar nada. As planilhas da raiz (índice e repasse) só vão do HD para o Drive.</p>
           <div class="hint" id="ajHDStatus"></div>
           <div class="acoes">
-            <button id="ajHDescolher">Escolher pasta ESCRITURAS ORGANIZADAS no HD</button>
+            <button id="ajHDescolher">Escolher a pasta das escrituras no HD</button>
             <button id="ajBkpEscolher">Escolher pasta de backup no HD</button>
           </div>
           <div class="acoes"><button class="prim" id="ajSincHD">Sincronizar HD ⇄ Drive agora</button></div>
@@ -508,21 +562,59 @@
         </div>
       </div>
 
-      <div class="card">
-        <h2>Orçamento e repasse (vale para PC e celular)</h2>
-        <label class="f" for="ajRepasse">Repasse ao Cartório de Santana (%)</label>
-        <input id="ajRepasse" type="number" min="0" max="100" step="0.5">
-        <label class="f" for="ajCabecalho">Cabeçalho da guia</label>
-        <textarea id="ajCabecalho"></textarea>
-        <label class="f" for="ajBanco">Dados bancários</label>
-        <textarea id="ajBanco"></textarea>
-        <label class="f" for="ajPix">Código Pix (copia e cola, para o QR Code)</label>
-        <textarea id="ajPix"></textarea>
-        <label class="f" for="ajDescricao">Descrição padrão na guia</label>
-        <input id="ajDescricao" type="text">
-        <label class="f" for="ajCidade">Cidade da data</label>
-        <input id="ajCidade" type="text">
-        <div class="acoes"><button class="prim" id="ajSalvarCfg">Salvar</button></div>
+      <div class="card" id="ajCartorio">
+        <h2>Cartório: <span id="ajcTitulo"></span> (vale para PC e celular)</h2>
+        <div class="linha2">
+          <div><label class="f">Nome do cartório (aba)</label><input id="ajc_nome" type="text"></div>
+          <div><label class="f">Cor da aba</label><input id="ajc_cor" type="color" style="height:40px;width:100%"></div>
+          <div><label class="f">Estado (UF)</label><input id="ajc_uf" type="text" maxlength="2"></div>
+          <div><label class="f">ISS sobre emolumentos (%)</label><input id="ajc_issPct" type="number" min="0" max="10" step="0.5"></div>
+        </div>
+        <label class="f">Logo (endereço da imagem)</label>
+        <input id="ajc_logo" type="text" placeholder="marca/logo-selo.png">
+        <label class="f">Pasta das escrituras no Drive e no HD</label>
+        <input id="ajc_pasta" type="text" placeholder="ESCRITURAS OUTRO CARTORIO">
+        <label class="f">Tabela de emolumentos</label>
+        <select id="ajc_tabela"></select>
+        <div class="acoes" style="margin-top:6px">
+          <label><input type="file" id="ajcImportar" accept=".csv,.txt" class="hidden"><button type="button" class="peq" onclick="document.getElementById('ajcImportar').click()">Importar tabela (CSV)…</button></label>
+          <button type="button" class="peq" id="ajcModelo">Baixar modelo de tabela</button>
+        </div>
+        <div class="linha2">
+          <div><label class="f">Código da certidão da matrícula</label><input id="ajc_codCertidao" type="text"></div>
+          <div><label class="f">Código da diligência</label><input id="ajc_codDiligencia" type="text"></div>
+        </div>
+
+        <h3>Minutas</h3>
+        <label class="f">Quem lavra (nome)</label><input id="ajc_lavrador" type="text">
+        <div class="linha2">
+          <div><label class="f">Cargo</label><input id="ajc_cargo" type="text" placeholder="Tabelião e Registrador Substituto"></div>
+          <div><label class="f">Cargo curto</label><input id="ajc_cargoCurto" type="text" placeholder="Tabelião Substituto"></div>
+        </div>
+        <label class="f">Local – redação tradicional</label><input id="ajc_localTrad" type="text" placeholder="neste Distrito, Comarca e Município de ... – PA">
+        <label class="f">Local – redação revisada</label><input id="ajc_localRev" type="text" placeholder="neste Distrito, Município e Comarca de ..., Estado do Pará">
+        <div class="linha2">
+          <div><label class="f">Cidade da data</label><input id="ajc_cidadeData" type="text" placeholder="Bujaru/PA"></div>
+          <div><label class="f">Sigla no nome dos arquivos</label><input id="ajc_siglaArquivo" type="text" placeholder="BUJARU"></div>
+        </div>
+
+        <label class="f">Timbre da minuta (uma linha por item)</label>
+        <textarea id="ajc_timbre" style="min-height:90px" placeholder="CARTÓRIO SANTANA&#10;Cartório de Notas e Registro Civil de Pessoas Naturais&#10;Comarca de Bujaru&#10;MARIA ELISA CORDEIRO DE SANTANA – Tabeliã e Registradora"></textarea>
+        <label class="f">Endereço do cartório (sai no timbre; até 2 linhas)</label>
+        <textarea id="ajc_endereco" style="min-height:52px" placeholder="Rua ..., nº ..., Bairro&#10;Cidade/UF – CEP ..."></textarea>
+
+        <h3>Guia de orçamento</h3>
+        <label class="f">Cabeçalho da guia</label><textarea id="ajc_cabecalho"></textarea>
+        <label class="f">Dados bancários</label><textarea id="ajc_banco"></textarea>
+        <label class="f">Código Pix (copia e cola, para o QR Code)</label><textarea id="ajc_pix"></textarea>
+        <label class="f">Descrição padrão na guia</label><input id="ajc_descricaoGuia" type="text">
+
+        <h3>Repasse</h3>
+        <div class="linha2">
+          <div><label class="f">Repasse (%)</label><input id="ajc_repassePct" type="number" min="0" max="100" step="0.5"></div>
+          <div><label class="f">Repasse para</label><input id="ajc_repasseDestino" type="text" placeholder="Cartório de Santana"></div>
+        </div>
+        <div class="acoes"><button class="prim" id="ajcSalvar">Salvar cartório</button><button id="ajcNovo">+ Novo cartório</button></div>
       </div>
 
       <div class="card">
@@ -556,6 +648,7 @@
 <script src="js/orcamentos.js"></script>
 <script src="js/controle.js"></script>
 <script src="js/acervo.js"></script>
+<script src="js/comunicacoes.js"></script>
 <script src="js/sinchd.js"></script>
 <script src="js/app.js"></script>
 </body>

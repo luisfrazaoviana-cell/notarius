@@ -259,6 +259,10 @@ const Esc = {
       { id: 'selo', rotulo: 'Selo digital (pode deixar em branco)', valor: r.selo || '' }], ['Marcar como LAVRADA', 'Cancelar']);
     if (!resp) return;
     const livro = resp.livro ? normLivro(resp.livro) : '', folhas = formatarFolhas(resp.folhas);
+    // Sem livro ou folhas o ato fica fora da conferência do livro e da CENSEC: avisa antes.
+    if ((!livro || !lerFolhas(folhas)) && !await confirmar('Livro e folhas',
+      `${!livro ? 'O livro' : 'As folhas'}${!livro && !lerFolhas(folhas) ? ' e as folhas' : ''} ficaram em branco. Sem isso o ato não entra na conferência do livro nem na CENSEC (dá para completar depois na escritura). Marcar como LAVRADA assim mesmo?`,
+      'Marcar assim mesmo', 'Voltar')) return;
     // Confere na hora se as folhas encostam ou se sobrepõem às de outro ato do mesmo livro.
     if (livro && lerFolhas(folhas)) {
       const f = lerFolhas(folhas);
@@ -281,6 +285,7 @@ const Esc = {
 
   async carregarDocs(r) {
     const box = $('edDocs');
+    if (!box) return; // janela da escritura já fechada (ex.: envio terminou depois)
     try {
       const pasta = await this.pastaDe(r);
       const subs = (await Nuvem.listar(pasta)).filter(f => f.pasta);
@@ -310,6 +315,13 @@ const Esc = {
   // Vale igual para escrituras e procurações. Word/Excel e HEIC vão como estão, com aviso.
   async enviarDocs(r, sp, arquivos) {
     if (!arquivos.length) return;
+    // Word (.docx) vira PDF antes de tudo; se a conversão falhar, vai como está (com aviso).
+    const falhasWord = [];
+    arquivos = await Promise.all(arquivos.map(async f => {
+      if (!/\.docx$/i.test(f.name)) return f;
+      try { return await wordParaPDF(f); } catch (e) { falhasWord.push(f.name); return f; }
+    }));
+    if (falhasWord.length) aviso('Não consegui converter para PDF: ' + falhasWord.join(', '), 'erro');
     const ehImg = f => /^image\/(jpeg|png|webp|gif)$/.test(f.type), ehPdf = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
     const conv = arquivos.filter(f => ehImg(f) || ehPdf(f)), outros = arquivos.filter(f => !conv.includes(f));
     let nomesDoc = conv.map(f => sugerirNomeDoc(f.name));
@@ -499,6 +511,50 @@ async function arquivosParaPDF(arquivos) {
     (await saida.copyPages(origem, origem.getPageIndices())).forEach(p => saida.addPage(p));
   }
   return new Blob([await saida.save()], { type: 'application/pdf' });
+}
+
+// Converte um Word (.docx) em PDF A4 com margens de 2 cm: o texto é lido do .docx parágrafo por parágrafo e
+// escrito direto no PDF (títulos e parágrafos todo em negrito saem em negrito; tabelas viram linhas "a | b | c").
+// Imagens dentro do Word não entram. O .doc antigo não é aceito (vai como está, com aviso).
+async function wordParaPDF(arquivo) {
+  await Promise.all([carregarScript(LIB.mammoth), carregarScript(LIB.jspdf)]);
+  const { value: html } = await window.mammoth.convertToHtml({ arrayBuffer: await arquivo.arrayBuffer() });
+  const raiz = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html').body.firstChild;
+  // Percorre o documento na ordem: parágrafos (quebras de linha mantidas), listas e tabelas
+  // (linha simples vira "a | b | c"; célula com tabela dentro é lida por dentro, sem repetir).
+  const blocos = [];
+  const textoDe = el => { const c = el.cloneNode(true); c.querySelectorAll('br').forEach(b => b.replaceWith('\n')); return c.textContent.split('\n').map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean); };
+  const forteEm = el => /^H\d$/.test(el.tagName) || (el.textContent.trim() && [...el.querySelectorAll('strong,b')].map(b => b.textContent).join('').trim() === el.textContent.trim());
+  const andar = no => {
+    for (const el of no.children) {
+      const t = el.tagName;
+      if (/^(H\d|P)$/.test(t)) { const ls = textoDe(el); if (!ls.length) blocos.push({ texto: '' }); ls.forEach(l => blocos.push({ texto: l, forte: forteEm(el) })); }
+      else if (t === 'UL' || t === 'OL') [...el.children].forEach(li => blocos.push({ texto: '• ' + textoDe(li).join(' '), forte: false }));
+      else if (t === 'TABLE') {
+        for (const tr of el.querySelectorAll(':scope > tbody > tr, :scope > tr')) {
+          const cels = [...tr.children];
+          if (cels.some(c => c.querySelector('table'))) cels.forEach(andar);
+          else blocos.push({ texto: cels.map(c => textoDe(c).join(' ')).join(' | '), forte: false });
+        }
+      } else andar(el);
+    }
+  };
+  andar(raiz);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const M = 20, L = 170, A = 297, lh = 5.2;
+  let y = M;
+  doc.setFontSize(11);
+  for (const b of blocos.length ? blocos : [{ texto: '(documento sem texto)' }]) {
+    if (!b.texto) { y += lh / 2; continue; }
+    doc.setFont('helvetica', b.forte ? 'bold' : 'normal');
+    for (const linha of doc.splitTextToSize(b.texto, L)) {
+      if (y > A - M) { doc.addPage(); y = M; }
+      doc.text(linha, M, y); y += lh;
+    }
+    y += 1.5;
+  }
+  return new File([doc.output('blob')], arquivo.name.replace(/\.docx$/i, '.pdf'), { type: 'application/pdf' });
 }
 
 // Converte imagens em um PDF A4 (uma imagem por página, centralizada).

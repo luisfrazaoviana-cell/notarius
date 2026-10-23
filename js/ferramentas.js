@@ -351,6 +351,20 @@ function negritarNomes(texto) {
   }
   return texto;
 }
+// Gênero de cada pessoa pelo que vem logo depois do nome na QUALIFICAÇÃO digitada ("brasileira", "portadora",
+// "inscrita", "casada"...), nunca pelo nome. Sem pista clara, fica o gênero do grupo.
+function generoPessoa(nomeP, qual, gGrupo) {
+  const n = (nomeP || '').trim();
+  if (!n || !qual) return gGrupo;
+  const i = qual.toUpperCase().indexOf(n.toUpperCase());
+  if (i < 0) return gGrupo;
+  const depois = qual.slice(i + n.length, i + n.length + 90).toLowerCase();
+  const fem = depois.match(/\b(brasileira|estrangeira|portadora|inscrita|solteira|casada|viúva|divorciada|separada|aposentada|nascida|residente e domiciliada)\b/);
+  const mas = depois.match(/\b(brasileiro|estrangeiro|portador|inscrito|solteiro|casado|viúvo|divorciado|separado|aposentado|nascido|residente e domiciliado)\b/);
+  if (fem && (!mas || fem.index < mas.index)) return 'F';
+  if (mas) return 'M';
+  return gGrupo;
+}
 const v = id => $(id).value.trim();
 const F = (id, rotulo) => v(id) || `[[${rotulo} xxx]]`;
 const linhas = id => v(id).split('\n').map(s => s.trim()).filter(Boolean);
@@ -366,6 +380,9 @@ function romano(n) {
 // Grupo de partes, com concordância de gênero e número.
 function grupo(idNomes, gen, forcarPlural) {
   const pessoas = linhas(idNomes).map(l => { const [nome, papel] = l.split('|').map(s => s.trim()); return { nome, papel }; });
+  // Grupo marcado "Masculino / misto" mas todas as pessoas são mulheres pela qualificação: o texto concorda no feminino.
+  const qual = { m_aNomes: 'm_aQual', m_bNomes: 'm_bQual' }[idNomes];
+  if (gen === 'M' && qual && pessoas.length && pessoas.every(p => generoPessoa(p.nome, v(qual), 'M') === 'F')) gen = 'F';
   return { pessoas, pl: forcarPlural || pessoas.length > 1, g: gen };
 }
 const w = (G, ms, fs, mp, fp) => G.pl ? (G.g === 'F' ? fp : mp) : (G.g === 'F' ? fs : ms);
@@ -727,9 +744,9 @@ function gerarMinuta() {
   corpo = corpo.replace(/\{\{(\w+)\}\}/g, (_, k) => ref[k] || `[[item ${k} xxx]]`);
 
   const ass = [];
-  const addGrupo = (G, base) => G.pessoas.forEach(p => ass.push([p.nome.toUpperCase(), p.papel || cap(nome(base, { pl: false, g: G.g }).toLowerCase())]));
-  addGrupo(c.A, c.rA);
-  if (c.B) addGrupo(c.B, c.rB);
+  const addGrupo = (G, base, qual) => G.pessoas.forEach(p => ass.push([p.nome.toUpperCase(), p.papel || cap(nome(base, { pl: false, g: generoPessoa(p.nome, v(qual), G.g) }).toLowerCase())]));
+  addGrupo(c.A, c.rA, 'm_aQual');
+  if (c.B) addGrupo(c.B, c.rB, 'm_bQual');
   if (c.m === 'inventario' || c.m === 'divorcio') ass.push([(v('m_adv').replace(/\*\*/g, '').split(',')[0].trim() || 'ADVOGADO').toUpperCase(), 'Advogado']);
   ass.push([ct.lavrador || 'NOME DE QUEM LAVRA', cargo]);
 

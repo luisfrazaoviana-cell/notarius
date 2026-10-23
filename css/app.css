@@ -121,6 +121,10 @@ a.btn:hover { border-color: var(--accent); color: var(--accent); }
 .problemas li.aviso { background: var(--warn-bg); color: var(--warn-ink); }
 .okmsg { background: #e6f4ea; color: var(--ok); border-radius: 9px; padding: 10px 12px; font-size: 13px; margin-top: 12px; }
 #view-comunicacoes .card { margin-bottom: 18px; }
+/* Totais gerais das Receitas: recolhidos, abrem ao tocar */
+details.totais { grid-column: 1 / -1; font-size: 13px; color: var(--muted); padding: 2px 4px; }
+details.totais summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+details.totais[open] { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; }
 .acoes { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
 
 .aviso { background: var(--warn-bg); color: var(--warn-ink); border-radius: 9px; padding: 10px 12px; font-size: 13px; margin-top: 12px; }

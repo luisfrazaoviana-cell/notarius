@@ -1,0 +1,699 @@
+// Calculadora de emolumentos, checklist de documentos e minutas (modelos tradicional e revisado).
+
+function abrirSub(id) {
+  document.querySelectorAll('#view-ferramentas .subtabs button').forEach(b => b.classList.toggle('ativo', b.dataset.sub === id));
+  document.querySelectorAll('#view-ferramentas .sub').forEach(s => s.classList.toggle('ativo', s.id === 'sub-' + id));
+}
+document.querySelectorAll('#view-ferramentas .subtabs button').forEach(b => b.addEventListener('click', () => abrirSub(b.dataset.sub)));
+
+/* ------------------------- Calculadora ------------------------- */
+const TIPOS = [
+  { id: 'escComValor', nome: 'Escritura com valor declarado', tabela: 'Tabela V – I', faixa: true, modal: 'cv' },
+  { id: 'escInventario', nome: 'Escritura de inventário, separação ou divórcio com bens', tabela: 'Tabela V – II', faixa: true, modal: 'inventario' },
+  { id: 'escSemValor', nome: 'Escritura sem valor declarado', tabela: 'Tabela V – III', faixa: false,
+    adicional: { item: '680', cod: '681', label: 'Laudas que acrescerem (ata notarial)' }, excluir: ['681'] },
+  { id: 'procuracao', nome: 'Procuração', tabela: 'Tabela V – VII', faixa: false,
+    adicional: { cod: '694', label: 'Outorgantes adicionais' }, excluir: ['694'] },
+  { id: 'regImovel', nome: 'Registro com valor declarado (Imóveis)', tabela: 'Tabela III – III', faixa: true },
+  { id: 'avbComValor', nome: 'Averbação com valor declarado (Imóveis)', tabela: 'Tabela III – XIV', faixa: true },
+  { id: 'avbSemValor', nome: 'Averbação sem valor declarado (Imóveis)', tabela: 'Tabela III – XIII', faixa: false },
+  { id: 'escMaritimo', nome: 'Escritura – Contratos Marítimos', tabela: 'Tabela IV – IV', faixa: true }
+];
+
+// Atos adicionais que podem ser marcados junto com o ato principal.
+const AVULSOS = [
+  { cod: '695', nome: 'Diligência' },
+  { cod: '453', nome: 'Certidão de inteiro teor da matrícula (atualizada)' },
+  { cod: '456', nome: 'Certidão de inteiro teor com ônus e ações (atualizada)' },
+  { cod: '016', nome: 'Certidão de casamento (atualizada – 2ª via)' },
+  { cod: '678', nome: 'Certidão de escritura (atualizada)' },
+  { cod: '698', nome: 'Certidão de procuração (atualizada)' }
+];
+
+function tipoAtual() { return TIPOS.find(t => t.id === $('tipo').value); }
+function porCodigo(lista, cod) { return lista.find(r => r.cod === cod); }
+function acharFaixa(lista, c) { return lista.find(r => r.de !== null && c >= r.de && (r.ate === null || c <= r.ate)); }
+
+function montarTipos() { $('tipo').innerHTML = TIPOS.map(t => `<option value="${t.id}">${t.nome} (${t.tabela})</option>`).join(''); }
+
+function montarAvulsos() {
+  $('avulsos').innerHTML = AVULSOS.map(a => {
+    const r = porCodigo(DADOS.avulsos, a.cod);
+    return `<label class="avulso"><input type="checkbox" id="av_${a.cod}">
+      <span>${a.nome} <small>cód. ${a.cod} – R$ ${brl(r.total)}</small></span>
+      <input type="number" id="avq_${a.cod}" min="1" step="1" value="1" title="Quantidade"></label>`;
+  }).join('');
+  AVULSOS.forEach(a => {
+    $('av_' + a.cod).addEventListener('change', calcular);
+    $('avq_' + a.cod).addEventListener('input', () => { if (+$('avq_' + a.cod).value > 0) $('av_' + a.cod).checked = true; calcular(); });
+  });
+}
+
+function montarItens() {
+  const t = tipoAtual();
+  $('blocoValor').classList.toggle('hidden', !t.faixa);
+  $('blocoItem').classList.toggle('hidden', t.faixa);
+  if (!t.faixa) {
+    const itens = DADOS[t.id].filter(r => !(t.excluir || []).includes(r.cod));
+    $('item').innerHTML = itens.map(r => `<option value="${r.cod}">${r.cod} – ${r.desc}</option>`).join('');
+  }
+  $('qtd').value = 0;
+  atualizarQtd();
+  montarFaixas(null);
+}
+
+function atualizarQtd() {
+  const ad = tipoAtual().adicional;
+  const mostra = ad && (!ad.item || $('item').value === ad.item);
+  $('blocoQtd').classList.toggle('hidden', !mostra);
+  if (mostra) $('qtdLabel').textContent = ad.label;
+}
+
+function montarFaixas(atual) {
+  const t = tipoAtual();
+  $('detFaixas').classList.toggle('hidden', !t.faixa);
+  if (!t.faixa) return;
+  $('faixas').innerHTML = '<table><thead><tr><th>Código</th><th>Faixa (R$)</th><th>Emolumentos</th><th>Selo</th><th>ISS</th><th>Total</th></tr></thead><tbody>' +
+    DADOS[t.id].map(r => `<tr class="${atual && r.cod === atual.cod ? 'atual' : ''}"><td>${r.cod}</td><td>${r.desc}</td><td>${brl(r.emol)}</td><td>${brl(r.selo)}</td><td>${brl(r.iss)}</td><td>${brl(r.total)}</td></tr>`).join('') +
+    '</tbody></table>';
+}
+
+let resumoTexto = '';
+
+function calcular() {
+  const t = tipoAtual();
+  const lista = DADOS[t.id];
+  let linha, valor = null;
+
+  if (t.faixa) {
+    valor = lerValor($('valor').value);
+    if (valor === null) {
+      $('saida').innerHTML = '<div class="vazio">Informe o valor para calcular.</div>';
+      resumoTexto = ''; montarFaixas(null); return;
+    }
+    linha = acharFaixa(lista, valor);
+    montarFaixas(linha);
+  } else {
+    linha = porCodigo(lista, $('item').value);
+  }
+  if (!linha) { $('saida').innerHTML = '<div class="vazio">Nenhuma faixa encontrada.</div>'; return; }
+
+  // 30% por ônus/cláusula resolutiva (até 3) e 30% por imóvel rural; teto de 90%,
+  // e o acréscimo nunca ultrapassa o valor dos emolumentos.
+  const nOnus = +$('nOnus').value, rural = $('rural').checked;
+  const motivos = [];
+  if (nOnus) motivos.push(nOnus === 1 ? '1 ônus/cláusula' : `${nOnus} ônus/cláusulas`);
+  if (rural) motivos.push('imóvel rural');
+  const percBruto = 30 * (nOnus + (rural ? 1 : 0));
+  const perc = Math.min(percBruto, 90);
+
+  const emolBase = linha.emol;
+  const acresc = Math.min(pct(emolBase, perc), emolBase);
+  const emol = emolBase + acresc;
+  const fundos = (linha.frc || 0) + (linha.frj || 0);
+  const selo = linha.selo;
+  const iss = pct(emol, 5);
+  let total = emol + fundos + selo + iss;
+
+  const linhas = [];
+  linhas.push(['Emolumentos (tabela)', emolBase]);
+  if (perc) linhas.push([`Acréscimo de ${perc}% (${motivos.join(' + ')})`, acresc]);
+  if (perc) linhas.push(['Emolumentos com acréscimo', emol]);
+  if (linha.frc) linhas.push(['FRC', linha.frc]);
+  if (linha.frj) linhas.push(['FRJ', linha.frj]);
+  linhas.push(['Selo', selo]);
+  linhas.push(['ISS (5%)', iss]);
+  linhas.push(['Subtotal do ato', emol + fundos + selo + iss, 'grupo']);
+
+  const ad = t.adicional;
+  const qtd = Math.max(0, parseInt($('qtd').value, 10) || 0);
+  if (ad && (!ad.item || linha.cod === ad.item) && qtd > 0) {
+    const r = porCodigo(lista, ad.cod);
+    const sub = (r.emol + r.selo + pct(r.emol, 5)) * qtd;
+    linhas.push([`${ad.label}: ${qtd} × cód. ${r.cod} (R$ ${brl(r.total)})`, sub, 'sub']);
+    total += sub;
+  }
+
+  let temAvulso = false;
+  AVULSOS.forEach(a => {
+    if (!$('av_' + a.cod).checked) return;
+    const q = Math.max(1, parseInt($('avq_' + a.cod).value, 10) || 1);
+    const r = porCodigo(DADOS.avulsos, a.cod);
+    if (!temAvulso) { linhas.push(['Atos adicionais', null, 'grupo']); temAvulso = true; }
+    const sub = (r.emol + (r.frc || 0) + (r.frj || 0) + r.selo + pct(r.emol, 5)) * q;
+    linhas.push([`${a.nome}: ${q} × cód. ${r.cod} (R$ ${brl(r.total)})`, sub, 'sub']);
+    total += sub;
+  });
+
+  const faixaTxt = t.faixa && !/^A partir/.test(linha.desc) ? `Faixa ${linha.desc}` : linha.desc;
+  let html = `<div class="codigo"><div><div class="hint">Código</div><b>${linha.cod}</b></div><small>${t.tabela}<br>${faixaTxt}</small></div>`;
+  if (t.faixa) html += `<div class="hint" style="margin-bottom:8px">Valor informado: R$ ${brl(valor)}</div>`;
+  html += '<table class="res">' + linhas.map(([n, v, cls]) =>
+    `<tr class="${cls || ''}"><td>${n}</td><td>${v === null ? '' : 'R$ ' + brl(v)}</td></tr>`).join('') +
+    `<tr class="total"><td>Total</td><td>R$ ${brl(total)}</td></tr></table>`;
+  if (percBruto > 90) html += `<div class="aviso">Os acréscimos marcados somam ${percBruto}%; foi aplicado o teto de 90%.</div>`;
+  if (linha.obs) html += `<div class="aviso">${linha.obs}</div>`;
+  $('saida').innerHTML = html;
+
+  resumoTexto = [
+    `${t.nome} (${t.tabela})`,
+    t.faixa ? `Valor: R$ ${brl(valor)}` : null,
+    `Código ${linha.cod} – ${faixaTxt}`,
+    ...linhas.filter(l => l[1] !== null).map(([n, v]) => `${n}: R$ ${brl(v)}`),
+    `TOTAL: R$ ${brl(total)}`
+  ].filter(Boolean).join('\n');
+}
+
+/* -------------------------- Checklist -------------------------- */
+function listaDocumentos(m, imovel, op) {
+  const S = [];
+  const add = (titulo, itens) => S.push({ titulo, itens: itens.filter(Boolean) });
+  const partes = { cv: 'Vendedores e compradores', dacao: 'Devedor e credor', inventario: 'Herdeiros, cônjuge/companheiro sobrevivente e cessionários', divorcio: 'Divorciandos' }[m];
+  add(partes + ' (pessoas físicas)', [
+    'RG e CPF, ou CNH, originais – de todos os comparecentes e cônjuges',
+    'Certidão de nascimento (solteiros) ou de casamento atualizada (até 90 dias), com averbações de divórcio ou óbito, se houver',
+    op.casados && 'Pacto antenupcial registrado, se houver; escritura ou declaração de união estável, se for o caso',
+    'Comprovante de endereço, profissão, telefone e e-mail',
+    'Declaração de pessoa exposta politicamente (feita no ato)'
+  ]);
+  if (op.pj) add('Pessoa jurídica', [
+    'Contrato social ou estatuto consolidado e última alteração', 'Certidão simplificada da JUCEPA (até 30 dias)', 'Cartão CNPJ',
+    'Documentos pessoais do sócio administrador ou presentante', 'Certidão Negativa de Débitos federais (RFB/PGFN) da empresa',
+    'Distrato social e nomeação do liquidante, se a empresa estiver extinta'
+  ]);
+  if (op.proc) add('Procurador', [
+    'Certidão atualizada da procuração pública (até 30 dias), com poderes específicos para o ato',
+    'Substabelecimentos, se houver, com toda a cadeia de poderes', 'RG e CPF, ou CNH, do procurador'
+  ]);
+  const imv = [
+    'Certidão de inteiro teor da matrícula com negativa de ônus e de ações reais e pessoais reipersecutórias (até 30 dias)',
+    op.cond && 'Declaração de inexistência de débitos condominiais, assinada pelo síndico (art. 2º, §2º, da Lei 7.433/85)'
+  ];
+  if (imovel === 'urbano') imv.push(
+    'Certidão do cadastro imobiliário municipal com valor venal (CIF, em Ananindeua; espelho do IPTU nos demais municípios)',
+    'Certidão negativa de débitos municipais do imóvel (pode ser dispensada pelo adquirente)',
+    'Certidão de aforamento/autorização da SPU (CAT) e comprovante de laudêmio, se for terreno de marinha ou foreiro'
+  ); else imv.push(
+    'CCIR – Certificado de Cadastro de Imóvel Rural (INCRA), do último exercício, quitado',
+    'Certidão Negativa de Débitos do ITR (Receita Federal) – últimos 5 exercícios',
+    'Recibo de inscrição no CAR – Cadastro Ambiental Rural',
+    'Georreferenciamento certificado no SIGEF/INCRA, quando exigível pela área (Decreto 4.449/2002)',
+    'Observar a fração mínima de parcelamento (FMP) do município em caso de desmembramento',
+    'Se o adquirente for estrangeiro: autorização do INCRA (Lei 5.709/71)'
+  );
+  add('Imóvel ' + imovel, imv);
+  if (m === 'cv') add('Compra e venda', [
+    'Preço, data e forma de pagamento (comprovantes de transferência, se houver)',
+    'Guia do ITBI (DAM) e comprovante de pagamento – ou declaração do comprador de que apresentará no Registro de Imóveis',
+    'Se o vendedor adquiriu por escritura não registrada: certidão dessa escritura'
+  ]);
+  if (m === 'dacao') add('Dação em pagamento', [
+    'Documento da dívida (contrato, título, confissão de dívida) com valor e data',
+    'Acordo sobre o valor atribuído ao imóvel e a quitação da dívida',
+    'Guia do ITBI (DAM) e comprovante de pagamento – a dação é transmissão onerosa'
+  ]);
+  if (m === 'inventario') add('Inventário e partilha', [
+    'Certidão de óbito do autor da herança', 'RG, CPF e certidão de casamento ou nascimento do autor da herança',
+    'Certidões que comprovem o parentesco de cada herdeiro (nascimento ou casamento atualizadas)',
+    'Certidão negativa de testamento da CENSEC/RCTO (havendo testamento: decisão judicial que o registrou)',
+    'Documentos de todos os bens: imóveis (acima), veículos (CRLV), extratos bancários, quotas sociais',
+    'Certidão Negativa de Débitos federais (RFB/PGFN) em nome do autor da herança', 'Certidões negativas de débitos estadual e municipal',
+    'Declaração do ITCMD na SEFA/PA e comprovante de pagamento ou de isenção (deve anteceder a lavratura)',
+    'Plano de partilha (quinhões de cada herdeiro e meação)', 'Advogado: nome e inscrição na OAB (obrigatório)',
+    op.menor && 'Havendo menor ou incapaz: partilha em partes ideais e manifestação favorável do Ministério Público (Resolução CNJ 35/2007, redação da Resolução CNJ 571/2024)'
+  ]);
+  if (m === 'divorcio') add('Divórcio consensual', [
+    'Certidão de casamento atualizada (até 90 dias)', 'Pacto antenupcial registrado, se houver',
+    'Certidão de nascimento dos filhos comuns, ou declaração de que não há filhos',
+    'Declaração de que a mulher não está grávida ou desconhece a gravidez',
+    op.menor && 'Havendo filhos menores ou incapazes: decisão judicial prévia sobre guarda, convivência e alimentos',
+    'Acordo sobre nome (manter ou voltar ao de solteira) e alimentos entre os cônjuges',
+    'Documentos dos bens a partilhar e plano de partilha',
+    'Se houver partilha desigual (excesso de meação): guia e comprovante de ITBI ou ITCMD',
+    'Advogado: nome e inscrição na OAB (obrigatório)'
+  ]);
+  add('Feito pelo cartório', [
+    'Consulta à CNIB (Central Nacional de Indisponibilidade de Bens)', 'DOI à Receita Federal e comunicação à CENSEC',
+    m === 'inventario' && 'Consulta ao RCTO/CENSEC (testamentos)'
+  ]);
+  return S;
+}
+
+const NOMES_MODAL = { cv: 'Compra e venda', inventario: 'Inventário e partilha', divorcio: 'Divórcio consensual com partilha', dacao: 'Dação em pagamento' };
+const opcoesChecklist = () => ({ casados: $('cCasados').checked, pj: $('cPJ').checked, proc: $('cProc').checked, cond: $('cCond').checked, menor: $('cMenor').checked });
+
+function montarChecklist() {
+  const m = $('cModal').value, imovel = $('cImovel').value;
+  const secs = listaDocumentos(m, imovel, opcoesChecklist());
+  $('cTitulo').textContent = `Documentos – ${NOMES_MODAL[m]} – imóvel ${imovel}`;
+  $('cLista').innerHTML = secs.map((s, i) => `<div class="chk-sec"><h4>${s.titulo}</h4>` +
+    s.itens.map((it, j) => `<label><input type="checkbox" id="ck${i}_${j}"><span>${it}</span></label>`).join('') + '</div>').join('');
+}
+
+/* ------------------------ Por extenso ------------------------ */
+const UN = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze',
+  'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+const DZ = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+const CT = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+function ate999(n) {
+  if (n === 100) return 'cem';
+  const c = Math.floor(n / 100), r = n % 100, p = [];
+  if (c) p.push(CT[c]);
+  if (r && r < 20) p.push(UN[r]);
+  else if (r) p.push(r % 10 ? `${DZ[Math.floor(r / 10)]} e ${UN[r % 10]}` : DZ[r / 10]);
+  return p.join(' e ');
+}
+function extensoInt(n) {
+  if (n === 0) return 'zero';
+  const escalas = [['bilhão', 'bilhões'], ['milhão', 'milhões'], ['mil', 'mil'], ['', '']];
+  const grupos = [1e9, 1e6, 1e3, 1].map(d => Math.floor(n / d) % 1000);
+  const partes = [];
+  grupos.forEach((g, i) => {
+    if (!g) return;
+    const [s, p] = escalas[i];
+    partes.push({ g, t: i === 2 && g === 1 ? 'mil' : ate999(g) + (s ? ' ' + (g === 1 ? s : p) : '') });
+  });
+  return partes.map((p, i) => i === 0 ? p.t : ((p.g < 100 || p.g % 100 === 0) ? ' e ' : ', ') + p.t).join('');
+}
+function extensoReais(c) {
+  const r = Math.floor(c / 100), ct = c % 100, p = [];
+  if (r) p.push(extensoInt(r) + (r % 1e6 === 0 ? ' de reais' : r === 1 ? ' real' : ' reais'));
+  if (ct) p.push(extensoInt(ct) + (ct === 1 ? ' centavo' : ' centavos'));
+  return p.join(' e ') || 'zero real';
+}
+function dataExtenso(iso) {
+  if (!iso) return null;
+  const [a, m, d] = iso.split('-').map(Number);
+  const dia = d === 1 ? 'ao primeiro dia' : `aos ${extensoInt(d)} dias`;
+  return `${dia} do mês de ${MESES_NOME[m - 1]} do ano de ${extensoInt(a)} (${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${a})`;
+}
+function dataCurta(iso) {
+  if (!iso) return null;
+  const [a, m, d] = iso.split('-').map(Number);
+  return `${d === 1 ? '1º' : d} de ${MESES_NOME[m - 1]} de ${a}`;
+}
+
+/* --------------------------- Minutas --------------------------- */
+// Marcação dos modelos: **negrito**, __negrito sublinhado__, //itálico//, [[vermelho]].
+function marcacao(s) {
+  return esc(s)
+    .replace(/\[\[(.+?)\]\]/g, '<span class="red">$1</span>')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/__(.+?)__/g, '<b><u>$1</u></b>')
+    .replace(/\/\/(.+?)\/\//g, '<i>$1</i>');
+}
+const v = id => $(id).value.trim();
+const F = (id, rotulo) => v(id) || `[[${rotulo} xxx]]`;
+const linhas = id => v(id).split('\n').map(s => s.trim()).filter(Boolean);
+function valorB(id, rotulo) {
+  const c = lerValor(v(id));
+  return c === null ? `**R$** [[${rotulo} xxx]]` : `**R$ ${brl(c)} (${extensoReais(c)})**`;
+}
+function negrito(rotulo, valor, faltando) { return valor ? `**${rotulo} ${valor}**` : `**${rotulo}** [[${faltando} xxx]]`; }
+function romano(n) {
+  return [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']].reduce((s, [k, r]) => { while (n >= k) { s += r; n -= k; } return s; }, '');
+}
+
+// Grupo de partes, com concordância de gênero e número.
+function grupo(idNomes, gen, forcarPlural) {
+  const pessoas = linhas(idNomes).map(l => { const [nome, papel] = l.split('|').map(s => s.trim()); return { nome, papel }; });
+  return { pessoas, pl: forcarPlural || pessoas.length > 1, g: gen };
+}
+const w = (G, ms, fs, mp, fp) => G.pl ? (G.g === 'F' ? fp : mp) : (G.g === 'F' ? fs : ms);
+const vb = (G, s, p) => G.pl ? p : s;
+// VENDEDOR -> VENDEDORA/VENDEDORES/VENDEDORAS; HERDEIRO -> HERDEIRA/HERDEIROS/HERDEIRAS.
+function nome(base, G) {
+  if (base.includes('HERANÇA')) return base;
+  const m = base.match(/^(.*?)(OR|O)$/);
+  if (!m) return base;
+  const [, raiz, fim] = m;
+  return raiz + (fim === 'OR' ? w(G, 'OR', 'ORA', 'ORES', 'ORAS') : w(G, 'O', 'A', 'OS', 'AS'));
+}
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const art = { o: G => w(G, 'o', 'a', 'os', 'as'), ao: G => w(G, 'ao', 'à', 'aos', 'às'), pelo: G => w(G, 'pelo', 'pela', 'pelos', 'pelas'), do: G => w(G, 'do', 'da', 'dos', 'das') };
+const R = ([G, base]) => `**${nome(base, G)}**`;
+function nomesTitulo(G) {
+  const n = G.pessoas.map(p => p.nome);
+  if (!n.length) return '[[nomes xxx]]';
+  return '**' + (n.length > 1 ? n.slice(0, -1).join(', ') + ' E ' + n[n.length - 1] : n[0]).toUpperCase() + '**';
+}
+
+function contexto() {
+  const m = v('m_modal'), rural = v('m_imovel') === 'rural';
+  const c = { m, rural, trad: v('m_modelo') === 'trad' };
+  if (m === 'cv') { c.A = grupo('m_aNomes', v('m_aGen')); c.rA = 'VENDEDOR'; c.B = grupo('m_bNomes', v('m_bGen')); c.rB = 'COMPRADOR'; }
+  if (m === 'dacao') { c.A = grupo('m_aNomes', v('m_aGen')); c.rA = 'DEVEDOR'; c.B = grupo('m_bNomes', v('m_bGen')); c.rB = 'CREDOR'; }
+  if (m === 'inventario') {
+    c.A = grupo('m_aNomes', 'M', true); c.rA = 'HERDEIRO';
+    c.Fal = { pessoas: [{ nome: v('m_falNome') }], pl: false, g: v('m_falGen') };
+    c.rFal = c.Fal.g === 'F' ? 'AUTORA DA HERANÇA' : 'AUTOR DA HERANÇA';
+  }
+  if (m === 'divorcio') { c.A = grupo('m_aNomes', 'M', true); c.rA = 'DIVORCIANDO'; }
+  c.prop = m === 'inventario' ? [c.Fal, c.rFal] : [c.A, c.rA];
+  c.adq = m === 'cv' || m === 'dacao' ? [c.B, c.rB] : [c.A, c.rA];
+  return c;
+}
+
+/* Itens comuns aos dois modelos */
+function itQualificacao(c, G, base, lado) {
+  const outorg = lado === 'A' ? w(G, 'OUTORGANTE', 'OUTORGANTE', 'OUTORGANTES', 'OUTORGANTES') : w(G, 'OUTORGADO', 'OUTORGADA', 'OUTORGADOS', 'OUTORGADAS');
+  const rot = nome(base, G);
+  return {
+    tt: `${outorg} / ${rot}`, tr: `${w(G, 'DO', 'DA', 'DOS', 'DAS')} ${outorg} ${rot}`,
+    x: `${F(lado === 'A' ? 'm_aQual' : 'm_bQual', 'qualificação completa')}, doravante ${w(G, 'denominado', 'denominada', 'denominados', 'denominadas')} **${rot}**.` + (c.trad ? ' Documentos arquivados em classificador próprio desta Serventia.' : '')
+  };
+}
+function itIdentidade(c) {
+  return c.trad
+    ? { tt: 'IDENTIDADE E CAPACIDADE', x: 'Reconheço a identidade das **PARTES**, sendo as próprias de que trato, mediante os documentos, em originais, que me foram exibidos, os quais ficam arquivados em classificador próprio desta Serventia. Reconheço, ainda, a capacidade jurídica dos **COMPARECENTES**, nos termos do art. 215, §1º, do Código Civil, mediante as perguntas que lhes fiz e as respostas que me foram dadas, estando em perfeito juízo e claro entendimento, segundo o meu parecer, do que **DOU FÉ**.' }
+    : { tr: 'DA IDENTIDADE E DA CAPACIDADE DAS PARTES', x: 'Reconheço a identidade dos comparecentes pelos documentos originais que me foram apresentados e a sua capacidade jurídica pelas perguntas que lhes fiz e pelas respostas que obtive, nos termos do art. 215, § 1º, II, do Código Civil. Os documentos apresentados ficam arquivados em classificador próprio desta Serventia. Dou fé.' };
+}
+function itObjeto(c) {
+  const loc = v('m_local');
+  const q = loc ? `//“${loc}”//` : '“[[localização do imóvel xxx]]”';
+  return c.trad
+    ? { k: 'objeto', tt: 'OBJETO', x: `O imóvel objeto desta escritura possui a seguinte qualificação objetiva: ${q}. A qualificação objetiva foi descrita conforme consta da Certidão de Inteiro Teor da matrícula do imóvel, indicada no item seguinte, nos termos do §1º, do art. 2, da Lei 7.433/85.` }
+    : { k: 'objeto', tr: 'DO IMÓVEL', x: `O objeto desta escritura é o seguinte imóvel: ${q}. A descrição corresponde à certidão de inteiro teor da matrícula indicada no item seguinte, na forma do art. 2º, § 1º, da Lei nº 7.433/1985.` };
+}
+function itTitulo(c) {
+  const [G, base] = c.prop, ri = F('m_ri', 'Ofício de Registro de Imóveis');
+  const mat = negrito('Matrícula nº', v('m_matricula'), 'número da matrícula');
+  const onus = linhas('m_onus'), L = i => String.fromCharCode((c.trad ? 65 : 97) + i);
+  let obs = '';
+  if (onus.length) {
+    obs = ' **OBSERVAÇÃO – ÔNUS NÃO CANCELADOS:** ' + onus.map((o, i) => `**${L(i)})** ${o}`).join('; ') + '.';
+    if ($('m_indisp').checked) obs += c.trad
+      ? ' As **PARTES** foram expressamente cientificadas da existência das referidas ordens de indisponibilidade, consignando-se a circunstância neste ato, nos termos do parágrafo único do art. 320-F do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023), estando cientes de que o registro da presente escritura dependerá do prévio cancelamento das indisponibilidades acima descritas.'
+      : ' As partes foram expressamente cientificadas da existência dessas ordens de indisponibilidade, circunstância que consigno neste ato, nos termos do parágrafo único do art. 320-F do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023), e estão cientes de que o registro desta escritura depende do prévio cancelamento dessas indisponibilidades.';
+  }
+  if (c.trad) return { k: 'titulo', tt: 'TÍTULO AQUISITIVO E DISPONIBILIDADE DO BEM',
+    x: `O imóvel qualificado acima foi havido nos termos descritos da Certidão de Inteiro Teor expedida pelo ${ri}, devidamente registrado sob a ${mat}, Livro 02 – Registro Geral` +
+      (onus.length ? '. Documento arquivado em classificador próprio desta Serventia.' + obs
+        : ', estando livre e desimpedido de quaisquer ônus reais, pessoais e reipersecutórios. Documento arquivado em classificador próprio desta Serventia.') };
+  const ser = c.m === 'inventario' ? vb(G, 'era', 'eram') : vb(G, 'é', 'são');
+  return { k: 'titulo', tr: 'DO TÍTULO AQUISITIVO E DA DISPONIBILIDADE',
+    x: `${cap(art.o(G))} ${R([G, base])} ${ser} ${w(G, 'proprietário', 'proprietária', 'proprietários', 'proprietárias')} do imóvel, registrado sob a ${mat}, Livro 2 – Registro Geral, do ${ri}, conforme certidão de inteiro teor apresentada.` +
+      (onus.length ? obs : ' O imóvel encontra-se livre e desembaraçado de quaisquer ônus reais e de ações reais ou pessoais reipersecutórias.') };
+}
+function itCadastro(c) {
+  const venal = valorB('m_venal', 'valor venal');
+  if (!c.rural) {
+    const sig = F('m_cadSigla', 'sigla do cadastro'), num = F('m_cadNum', 'número do cadastro'), mun = F('m_municipio', 'município/UF');
+    const doc = F('m_cadNome', 'nome do documento fiscal'), org = F('m_cadOrgao', 'órgão expedidor');
+    return c.trad
+      ? { tt: 'CADASTRO FISCAL', x: `O imóvel objeto desta Escritura está devidamente cadastrado junto a Prefeitura Municipal de ${mun}, sob o ${sig} nº ${num}, com o valor venal de ${venal}, conforme ${doc}, expedida pela ${org}. Documentos arquivados em classificador próprio desta Serventia.` }
+      : { tr: 'DO CADASTRO FISCAL', x: `O imóvel está cadastrado na Prefeitura Municipal de ${mun} sob o ${sig} nº ${num}, com valor venal de ${venal}, conforme ${doc} emitida pela ${org}.` };
+  }
+  const t = `no Instituto Nacional de Colonização e Reforma Agrária – INCRA, conforme **Certificado de Cadastro de Imóvel Rural – CCIR** nº ${F('m_ccir', 'número do CCIR')}, quitado; na Receita Federal do Brasil, sob o **Cadastro Imobiliário Brasileiro – CIB/NIRF** nº ${F('m_nirf', 'número do CIB/NIRF')}, com **Certidão Negativa de Débitos relativos ao Imposto sobre a Propriedade Territorial Rural – ITR**, nos termos do art. 22, §§ 1º e 2º, da Lei nº 4.947/1966 e do art. 21 da Lei nº 9.393/1996; e no **Cadastro Ambiental Rural – CAR** sob o nº ${F('m_car', 'número do CAR')}, nos termos da Lei nº 12.651/2012, com valor atribuído de ${venal}`;
+  return c.trad
+    ? { tt: 'CADASTRO RURAL', x: `O imóvel rural objeto desta Escritura está devidamente cadastrado ${t}. Documentos arquivados em classificador próprio desta Serventia.` }
+    : { tr: 'DO CADASTRO RURAL', x: `O imóvel rural está cadastrado ${t}.` };
+}
+function itImposto(c) {
+  const [G, base] = c.adq, op = v('m_imp');
+  const tt = 'IMPOSTO', tr = 'DO IMPOSTO DE TRANSMISSÃO';
+  if (op === 'nao_incide') return { tt, tr, x: 'Não incide imposto de transmissão sobre o presente ato, por não haver transmissão onerosa nem excesso de meação.' };
+  if (op === 'pendente') return { tt, tr, x: `${cap(art.o(G))} ${R([G, base])} ${vb(G, 'declara', 'declaram')} que se ${vb(G, 'responsabiliza', 'responsabilizam')} em apresentar o comprovante de recolhimento do Imposto de Transmissão de Bens Imóveis – ITBI ao Serviço de Registro de Imóveis competente, quando do registro da presente Escritura, nos termos do inc. I, do art. 35, da Lei nº 5.172/66, bem como nos termos do art. 1.227, do Código Civil.` };
+  const val = valorB('m_impValor', 'valor do ITBI'), bc = valorB('m_impBase', 'base de cálculo'), docs = F('m_impDocs', 'documentos do ITBI (DAM e comprovante)');
+  return c.trad
+    ? { tt, x: `Foi devidamente recolhido aos cofres da municipalidade competente o Imposto de Transmissão de Bens Imóveis – ITBI, no valor de ${val}, com base de cálculo no valor de ${bc}, nos termos dos seguintes documentos: ${docs}. Documentos arquivados em classificador próprio desta Serventia.` }
+    : { tr, x: `Foi recolhido o Imposto de Transmissão de Bens Imóveis – ITBI, no valor de ${val}, sobre a base de cálculo de ${bc}, conforme ${docs}.` };
+}
+function itCertidoesDispensa(c) {
+  const [G, base] = c.adq;
+  if (c.trad) return { tt: 'CERTIDÕES E DOCUMENTOS', x: 'Nos termos da Lei nº 7.433/85, do Decreto Regulamentador nº 93.240/86 e do Código de Normas dos Serviços Notariais e de Registro do Estado do Pará – CNSNR, as **PARTES** apresentaram as certidões e documentos necessários à lavratura do presente ato, dispensando, em comum acordo, as Certidões de Feitos Ajuizados da Justiça Estadual, Justiça Federal e Justiça do Trabalho, nos termos do inc. IV do art. 259 do CNSNR, dispensando a Certidão Negativa de Débitos Trabalhistas, com plena ciência da possibilidade de sua obtenção, nos termos do inc. V do art. 259 do CNSNR, bem como dispensam todas as Certidões de Natureza Fiscal, nos termos do §2º, do art. 1º do Decreto Regulamentador nº 93.240/86 e do §1º do art. 259 do CNSNR, observado, ainda, o disposto no §2º do art. 54 da Lei nº 13.097/2015, incluído pela Lei nº 14.382/2022, estando ciente dos riscos inerentes que venham a recair sobre o imóvel, respondendo, nos termos da lei, pelo pagamento dos débitos fiscais existentes.' };
+  return { tr: 'DAS CERTIDÕES', x: `As partes apresentaram os documentos exigidos pela Lei nº 7.433/1985, pelo Decreto nº 93.240/1986 e pelo Código de Normas dos Serviços Notariais e de Registro do Estado do Pará – CNSNR. ${cap(art.o(G))} ${R([G, base])}, ${vb(G, 'ciente', 'cientes')} dos riscos, ${vb(G, 'dispensa', 'dispensam')}: **a)** as certidões de feitos ajuizados da Justiça Estadual, da Justiça Federal e da Justiça do Trabalho, com fundamento no art. 259, IV, do CNSNR e no art. 54, § 2º, da Lei nº 13.097/2015, incluído pela Lei nº 14.382/2022; **b)** a Certidão Negativa de Débitos Trabalhistas, após ser ${w(G, 'informado', 'informada', 'informados', 'informadas')} da possibilidade de obtê-la, com fundamento no art. 259, V, do CNSNR; e **c)** as certidões fiscais, com fundamento no art. 1º, § 2º, do Decreto nº 93.240/1986 e no art. 259, § 1º, do CNSNR, hipótese em que ${vb(G, 'responde', 'respondem')}, na forma da lei, pelos débitos fiscais porventura existentes.` };
+}
+function itLGPD(c) {
+  return c.trad
+    ? { tt: 'TRATAMENTO DE DADOS PESSOAIS', x: 'As **PARTES** declaram que foram cientificadas que os dados pessoais descritos neste ato são públicos, bem como concordam, expressamente, com a divulgação dos seus dados pessoais, com a finalidade de emissão de certidões, segundas vias, envio aos órgãos fiscalizadores e cumprimento das exigências legais e regimentais, nos termos do art. 7º, inc. II, e do art. 23, §4º, da Lei nº 13.709/2018 – Lei Geral de Proteção de Dados Pessoais, bem como dos arts. 79 e seguintes do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023).' }
+    : { tr: 'DA PROTEÇÃO DE DADOS PESSOAIS', x: 'As partes foram cientificadas de que os dados pessoais constantes deste ato são públicos e autorizam o seu tratamento para a emissão de certidões e traslados, o envio de informações aos órgãos competentes e o cumprimento das obrigações legais e regulamentares, nos termos do art. 7º, II, e do art. 23, § 4º, da Lei nº 13.709/2018 – Lei Geral de Proteção de Dados Pessoais, e dos arts. 79 e seguintes do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial.' };
+}
+function itDeclaracoes(c, primeira) {
+  const [G, base] = c.prop, temOnus = linhas('m_onus').length > 0;
+  const lst = [];
+  lst.push(primeira || (c.trad
+    ? `${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')}, sob pena de responsabilidade civil e penal, que não existem outras ações reais, pessoais ou reipersecutórias, bem como não existem outros ônus reais que possam macular ou tornar ineficaz a presente escritura` + (temOnus ? ', exceto os ônus citados no Item {{titulo}}' : '')
+    : `${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')} que não existem outras ações reais ou pessoais reipersecutórias relativas ao imóvel nem outros ônus reais que o gravem` + (temOnus ? ', ressalvados os ônus citados no item {{titulo}}' : '')));
+  lst.push(c.trad
+    ? 'as **PARTES** declaram que não são pessoas expostas politicamente, atualmente ou nos últimos 05 (cinco) anos, não são familiares de pessoas expostas politicamente, bem como não são colaboradoras estreitas de pessoas expostas politicamente, declarando, ainda, para todos os fins de direito que, os dados constantes desta escritura são **VERDADEIROS**, ciente que quaisquer inconsistências podem trazer as sanções expostas na lei, nos termos do art. 145, §6º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023)'
+    : 'as partes declaram que não são, nem foram nos últimos cinco anos, pessoas expostas politicamente, e que não são familiares nem estreitos colaboradores de pessoas nessa condição, nos termos do art. 145, § 6º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023)');
+  if ($('m_cond').checked) lst.push(`${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')}, para fins de prova de quitação, que inexistem débitos condominiais ${c.trad ? 'incidentes sobre o referido imóvel, nos termos do §2º, do art. 2º, da Lei 7.433/85' : 'relativos ao imóvel (art. 2º, § 2º, da Lei nº 7.433/1985)'}`);
+  if (c.rural) lst.push('as **PARTES** declaram ciência de que o registro de imóvel rural pode depender de georreferenciamento certificado pelo INCRA, nos termos do art. 176, §§ 3º e 4º, da Lei nº 6.015/1973 e do Decreto nº 4.449/2002');
+  lst.push(c.trad
+    ? 'as **PARTES** afirmam sob responsabilidade civil e criminal que os fatos e declarações prestadas são a exata expressão da verdade e que aceitam esta escritura em todos os seus termos, por se acharem de inteiro e pleno acordo com o ajustado e contratado entre si, ressalvando eventuais erros, omissões ou direito de terceiros e, por conseguinte, eximindo esta serventia de quaisquer responsabilidades oriundas em razão dessas declarações'
+    : 'as partes declaram que as informações prestadas neste ato são verdadeiras, assumem por elas a responsabilidade civil e criminal e isentam esta Serventia de responsabilidade por erros, omissões ou direitos de terceiros não declarados');
+  const L = i => String.fromCharCode((c.trad ? 65 : 97) + i);
+  const corpo = lst.map((t, i) => `**${L(i)})** ${c.trad ? cap(t) : t}`).join('; ') + '.';
+  return c.trad ? { tt: 'DECLARAÇÕES', x: corpo } : { tr: 'DAS DECLARAÇÕES', x: 'Sob as penas da lei: ' + corpo };
+}
+function itConsultas(c) {
+  const [G, base] = c.prop, hs = linhas('m_hash');
+  const lista = (hs.length ? hs : ['[[código HASH xxx]]']).map((h, i) => `${i + 1}) ${h}`);
+  if (c.trad) return { tt: 'CONSULTAS E COMUNICAÇÕES', x: `**A) CENTRAL NACIONAL DE INDISPONIBILIDADE DE BENS – CNIB:** Nos termos do art. 320-F do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023, com redação dada pelo Provimento CNJ nº 188/2024), foi devidamente consultada a Central Nacional de Indisponibilidade de Bens – CNIB, sendo expedido o relatório de consulta de indisponibilidade, em nome ${art.do(G)} ${R([G, base])}, com resultado NEGATIVO, sob o(s) Código(s) HASH: ${lista.join('; ')}. **B) DECLARAÇÃO DE OPERAÇÕES IMOBILIÁRIAS – DOI:** Conforme Instrução Normativa RFB nº 2.186, de 12 de abril de 2024, alterada pela Instrução Normativa RFB nº 2.202, de 16 de julho de 2024, será devidamente comunicado à Receita Federal do Brasil sobre os valores dos negócios jurídicos constantes desta Escritura, dentro do prazo legal. **C) CENTRAL NOTARIAL DE SERVIÇOS ELETRÔNICOS COMPARTILHADOS – CENSEC:** As informações constantes da presente Escritura serão devidamente informadas à Central Notarial de Serviços Eletrônicos Compartilhados – CENSEC, dentro do prazo legal, nos termos dos arts. 264 e seguintes do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023).` };
+  return { tr: 'DAS CONSULTAS E COMUNICAÇÕES', x: `**a) CENTRAL NACIONAL DE INDISPONIBILIDADE DE BENS – CNIB:** consultei a CNIB em nome ${art.do(G)} ${R([G, base])}, nos termos do art. 320-F do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023, com a redação do Provimento CNJ nº 188/2024), com resultado NEGATIVO${G.pl ? ' para todos' : ''}, conforme ${lista.length > 1 ? 'os códigos hash nº' : 'o código hash nº'} ${lista.join(' e nº ')}; **b) DECLARAÇÃO SOBRE OPERAÇÕES IMOBILIÁRIAS – DOI:** emitirei a DOI à Receita Federal do Brasil no prazo legal, conforme a Instrução Normativa RFB nº 2.186/2024, alterada pela Instrução Normativa RFB nº 2.202/2024; **c) CENTRAL NOTARIAL DE SERVIÇOS ELETRÔNICOS COMPARTILHADOS – CENSEC:** comunicarei este ato à CENSEC no prazo legal, conforme os arts. 264 e seguintes do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial.` };
+}
+function itRegistro(c, extra) {
+  const [G, base] = c.adq;
+  if (c.trad) return { tt: 'REGISTRO DE IMÓVEIS', x: `**A)** As **PARTES** autorizam ao Ofício de Registro de Imóveis competente a proceder todos os atos de registro e averbações necessários à perfeita caracterização objetiva e subjetiva do imóvel desta escritura, nos termos do art. 1.245 do Código Civil; **B)** As **PARTES** foram devidamente orientadas a protocolarem a presente Escritura Pública no Serviço do Registro de Imóveis competente, nos termos do art. 1.227, do Código Civil, para surtir seus devidos efeitos de publicidade; **C)** Nos termos do Provimento CNJ nº 61/2017, ${art.o(G)} ${R([G, base])}, já ${w(G, 'qualificado', 'qualificada', 'qualificados', 'qualificadas')}, na qualidade de parte interessada, desde já ${vb(G, 'requer', 'requerem')} ao Ofício de Registro de Imóveis competente que registre o presente instrumento na matrícula do imóvel qualificado nesta escritura.` + (extra ? ` **D)** ${extra}` : '') };
+  return { tr: 'DO REGISTRO IMOBILIÁRIO', x: `As partes autorizam o Ofício de Registro de Imóveis competente a praticar todos os registros e averbações necessários à perfeita caracterização objetiva e subjetiva do imóvel, nos termos do art. 1.245 do Código Civil, e foram orientadas de que a propriedade somente se transmite com o registro desta escritura, conforme o art. 1.227 do Código Civil. ${cap(art.o(G))} ${R([G, base])}, na qualidade de ${w(G, 'interessado', 'interessada', 'interessados', 'interessadas')}, ${vb(G, 'requer', 'requerem')} desde já o registro deste instrumento na matrícula do imóvel, nos termos do Provimento CNJ nº 61/2017.` + (extra ? ' ' + extra : '') };
+}
+function itAdvogado(artigo) {
+  return { tt: 'ADVOGADO', tr: 'DO ADVOGADO', x: `Assiste as **PARTES**, nos termos do ${artigo}, ${F('m_adv', 'nome e OAB do advogado')}.` };
+}
+
+/* Itens próprios de cada modalidade */
+function itensCompraVenda(c) {
+  const { A, B } = c, V = R([A, c.rA]), C = R([B, c.rB]);
+  const valor = valorB('m_valor', 'preço'), pd = F('m_pagData', 'data do pagamento'), pf = F('m_pagForma', 'forma de pagamento');
+  const vontade = { tt: 'VONTADE DAS PARTES', x: `Então, pelas **PARTES**, no uso da prerrogativa de livre escolha do Tabelionato de Notas, nos termos do art. 8º, da Lei 8.935/94, bem como nos termos dos artigos 481, 1.228 e seguintes do Código Civil, formalizam juridicamente a sua vontade, nos seguintes termos: **A)** ${cap(art.pelo(A))} ${V} me foi dito que, por ${vb(A, 'ser', 'serem')} ${w(A, 'legítimo proprietário', 'legítima proprietária', 'legítimos proprietários', 'legítimas proprietárias')} do imóvel a seguir descrito, a justo título, é de seu interesse a venda ${art.ao(B)} ${C} nos preços e condições estabelecidas nesta Escritura Pública. **B)** ${cap(art.pelo(B))} ${C} me foi dito que é de seu interesse a aquisição do referido imóvel, nas mesmas condições estabelecidas nesta Escritura.` };
+  const preco = c.trad
+    ? { tt: 'PREÇO E FORMA DE PAGAMENTO', x: `Foi declarado pelas **PARTES** que o valor da compra e venda relativa ao imóvel é de ${valor}. O negócio jurídico, perfeito e realizado, foi pago integralmente ${art.pelo(B)} ${C}, em ${pd}, à vista, em moeda corrente do País, por intermédio de ${pf}, quantia esta que ${art.o(A)} ${V} ${vb(A, 'declara', 'declaram')} receber integralmente, pelo que ${vb(A, 'dá', 'dão')} plena, geral e irrevogável quitação do preço ajustado para a presente negociação, considerando pago e satisfeito por si e seus sucessores a qualquer título.` }
+    : { tr: 'DO PREÇO E DA QUITAÇÃO', x: `O preço da compra e venda é de ${valor}, pago integralmente ${art.pelo(B)} ${C} em ${pd}, à vista, em moeda corrente nacional, por meio de ${pf}. ${cap(art.o(A))} ${V} ${vb(A, 'declara', 'declaram')} ter recebido a totalidade do preço e ${vb(A, 'dá', 'dão')} ${art.ao(B)} ${C} plena, geral e irrevogável quitação, por si e por seus sucessores.` };
+  const venda = c.trad
+    ? { tt: 'COMPRA E VENDA E DA GARANTIA PELOS RISCOS DE EVICÇÃO DE DIREITO', x: `**A)** E assim, ${art.o(A)} ${V}, por ${vb(A, 'receber', 'receberem')} integralmente o preço ajustado pela presente escritura e na melhor forma de direito, ${vb(A, 'vende e transfere', 'vendem e transferem')} ${art.ao(B)} ${C} o imóvel acima descrito, ao tempo em que ${vb(A, 'transfere', 'transferem')} todos os direitos de ações, jus, domínio e posse sobre ele, por intermédio da cláusula **CONSTITUTI**, garantindo a faculdade de usar, gozar, dispor e reaver o imóvel, de forma incontestável e efetiva, como proprietário e legítimo possuidor, nos termos do art. 1.228 do Código Civil; **B)** ${cap(art.o(A))} ${V} se ${vb(A, 'compromete', 'comprometem')} a garantir como firme e boa a presente compra e venda, bem como a responder, a todo tempo e na forma da Lei, pelos riscos de evicção de direito.` }
+    : { tr: 'DA COMPRA E VENDA', x: `No exercício da livre escolha do tabelião, assegurada pelo art. 8º da Lei nº 8.935/1994, e nos termos dos arts. 481 e seguintes do Código Civil, ${art.o(A)} ${V} ${vb(A, 'vende', 'vendem')} ${art.ao(B)} ${C} o imóvel descrito no item {{objeto}} e ${vb(B, 'lhe', 'lhes')} ${vb(A, 'transmite', 'transmitem')}, desde já, por força desta escritura e da cláusula **CONSTITUTI**, o domínio, a posse, os direitos e as ações que sobre ele ${vb(A, 'exercia', 'exerciam')}, para que ${art.o(B)} ${C} o ${vb(B, 'use, goze, disponha e reivindique', 'usem, gozem, disponham e reivindiquem')} como seu, na forma do art. 1.228 do Código Civil. ${cap(art.o(B))} ${C} ${vb(B, 'aceita', 'aceitam')} a venda nos termos aqui estabelecidos. ${cap(art.o(A))} ${V} ${vb(A, 'obriga-se', 'obrigam-se')} a fazer esta venda sempre boa, firme e valiosa e a responder pela evicção, na forma da lei.` };
+  const partes = [itQualificacao(c, A, c.rA, 'A'), itQualificacao(c, B, c.rB, 'B'), itIdentidade(c)];
+  return c.trad
+    ? [...partes, vontade, itObjeto(c), itTitulo(c), itCadastro(c), preco, itImposto(c), venda, itCertidoesDispensa(c), itLGPD(c), itDeclaracoes(c), itConsultas(c), itRegistro(c)]
+    : [...partes, itObjeto(c), itTitulo(c), itCadastro(c), preco, venda, itImposto(c), itCertidoesDispensa(c), itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c)];
+}
+
+function itensDacao(c) {
+  const { A, B } = c, D = R([A, c.rA]), Cr = R([B, c.rB]);
+  const valor = valorB('m_valor', 'valor da dívida e do imóvel');
+  const vontade = { tt: 'VONTADE DAS PARTES', x: `Então, pelas **PARTES**, no uso da prerrogativa de livre escolha do Tabelionato de Notas, nos termos do art. 8º, da Lei 8.935/94, bem como nos termos dos arts. 356 a 359 do Código Civil, formalizam juridicamente a sua vontade, nos seguintes termos: **A)** ${cap(art.pelo(A))} ${D} me foi dito que, por ${vb(A, 'ser', 'serem')} ${w(A, 'legítimo proprietário', 'legítima proprietária', 'legítimos proprietários', 'legítimas proprietárias')} do imóvel a seguir descrito e ${w(A, 'devedor', 'devedora', 'devedores', 'devedoras')} da obrigação indicada no item {{divida}}, é de seu interesse dar o referido imóvel em pagamento ${art.ao(B)} ${Cr}; **B)** ${cap(art.pelo(B))} ${Cr} me foi dito que ${vb(B, 'consente', 'consentem')} em receber o imóvel em substituição à prestação devida, nos termos do art. 356 do Código Civil.` };
+  const divida = { k: 'divida', tt: 'DÍVIDA', tr: 'DA DÍVIDA', x: `${cap(art.o(A))} ${D} ${vb(A, 'é', 'são')} ${w(A, 'devedor', 'devedora', 'devedores', 'devedoras')} ${art.do(B)} ${Cr} da importância de ${valor}, ${F('m_divida', 'origem da dívida')}.` };
+  const quitacao = { tt: 'VALOR ATRIBUÍDO E QUITAÇÃO', tr: 'DO VALOR ATRIBUÍDO E DA QUITAÇÃO', x: `As **PARTES** atribuem ao imóvel, para os fins desta dação em pagamento, o valor de ${valor}, correspondente ao valor da dívida descrita no item {{divida}}. Em razão desta dação, ${art.o(B)} ${Cr} ${vb(B, 'dá', 'dão')} ${art.ao(A)} ${D} plena, geral e irrevogável quitação da referida dívida, para nada mais reclamar a qualquer título.` };
+  const evicto = `Se ${art.o(B)} ${Cr} ${vb(B, 'for', 'forem')} ${w(B, 'evicto', 'evicta', 'evictos', 'evictas')} da coisa recebida em pagamento`;
+  const dacao = c.trad
+    ? { tt: 'DAÇÃO EM PAGAMENTO E EVICÇÃO', x: `**A)** E assim, ${art.o(A)} ${D}, na melhor forma de direito, ${vb(A, 'dá', 'dão')} em pagamento e ${vb(A, 'transfere', 'transferem')} ${art.ao(B)} ${Cr} o imóvel acima descrito, ao tempo em que ${vb(A, 'transfere', 'transferem')} todos os direitos de ações, jus, domínio e posse sobre ele, por intermédio da cláusula **CONSTITUTI**, nos termos dos arts. 356 e 1.228 do Código Civil; **B)** ${evicto}, restabelecer-se-á a obrigação primitiva, e ficará sem efeito a quitação dada, ressalvados os direitos de terceiros, nos termos do art. 359 do Código Civil.` }
+    : { tr: 'DA DAÇÃO EM PAGAMENTO', x: `No exercício da livre escolha do tabelião, assegurada pelo art. 8º da Lei nº 8.935/1994, e nos termos dos arts. 356 a 359 do Código Civil, ${art.o(A)} ${D} ${vb(A, 'dá', 'dão')} ${art.ao(B)} ${Cr}, em pagamento da dívida descrita no item {{divida}}, o imóvel descrito no item {{objeto}} e ${vb(B, 'lhe', 'lhes')} ${vb(A, 'transmite', 'transmitem')}, desde já, por força desta escritura e da cláusula **CONSTITUTI**, o domínio, a posse, os direitos e as ações que sobre ele ${vb(A, 'exercia', 'exerciam')}. ${cap(art.o(B))} ${Cr} ${vb(B, 'aceita', 'aceitam')} o imóvel em substituição à prestação devida. ${evicto}, restabelece-se a obrigação primitiva e fica sem efeito a quitação dada, ressalvados os direitos de terceiros (art. 359 do Código Civil).` };
+  const partes = [itQualificacao(c, A, c.rA, 'A'), itQualificacao(c, B, c.rB, 'B'), itIdentidade(c)];
+  return c.trad
+    ? [...partes, vontade, divida, itObjeto(c), itTitulo(c), itCadastro(c), quitacao, itImposto(c), dacao, itCertidoesDispensa(c), itLGPD(c), itDeclaracoes(c), itConsultas(c), itRegistro(c)]
+    : [...partes, divida, itObjeto(c), itTitulo(c), itCadastro(c), quitacao, dacao, itImposto(c), itCertidoesDispensa(c), itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c)];
+}
+
+function itensInventario(c) {
+  const { A, Fal } = c, H = R([A, c.rA]), AU = `**${c.rFal}**`;
+  const falNome = v('m_falNome') ? `**${v('m_falNome').toUpperCase()}**` : '[[nome do autor da herança xxx]]';
+  const autor = { tt: c.rFal, tr: (Fal.g === 'F' ? 'DA ' : 'DO ') + c.rFal, x: `${falNome}, ${F('m_falQual', 'qualificação do autor da herança')}, ${w(Fal, 'falecido', 'falecida')} em ${F('m_obitoData', 'data do óbito')}, conforme Certidão de Óbito ${F('m_obitoCert', 'matrícula e cartório da certidão de óbito')}, doravante ${w(Fal, 'denominado', 'denominada')} ${AU}.` };
+  const herdeiros = { tt: 'OUTORGANTES / HERDEIROS', tr: 'DOS HERDEIROS', x: `${F('m_aQual', 'qualificação dos herdeiros e do cônjuge meeiro')}, doravante denominados ${H}.` + (c.trad ? ' Documentos arquivados em classificador próprio desta Serventia.' : '') };
+  const vontade = { tt: 'VONTADE DAS PARTES', tr: 'DO INVENTÁRIO', x: `As **PARTES**, maiores, capazes e concordes, no exercício da livre escolha do Tabelionato de Notas assegurada pelo art. 8º da Lei nº 8.935/1994, e nos termos do art. 610, § 1º, do Código de Processo Civil e da Resolução CNJ nº 35/2007, requerem a lavratura desta escritura de inventário e partilha extrajudiciais dos bens deixados ${art.pelo(Fal)} ${AU}, nos termos a seguir.` };
+  const invNome = v('m_invNome') ? `**${v('m_invNome').toUpperCase()}**` : '[[nome do inventariante xxx]]';
+  const inventariante = { tt: 'NOMEAÇÃO DE INVENTARIANTE', tr: 'DA NOMEAÇÃO DE INVENTARIANTE', x: `As **PARTES** nomeiam como __INVENTARIANTE__ ${invNome}, pessoa já qualificada nesta escritura, que aceita o encargo e assume o compromisso de desempenhá-lo com fidelidade, com poderes de representação do espólio, nos termos do art. 11 da Resolução CNJ nº 35/2007 e do art. 618 do Código de Processo Civil.` };
+  const testamento = { tt: 'INEXISTÊNCIA DE TESTAMENTO', tr: 'DA INEXISTÊNCIA DE TESTAMENTO', x: `Consultei o Registro Central de Testamentos On-Line – RCTO, mantido pela Central Notarial de Serviços Eletrônicos Compartilhados – CENSEC, com resultado NEGATIVO quanto à existência de testamento em nome ${art.do(Fal)} ${AU}${v('m_rcto') ? ', conforme certidão ' + v('m_rcto') : ''}.` };
+  const monte = { tt: 'MONTE-MOR', tr: 'DO MONTE-MOR', x: `O valor total dos bens deixados ${art.pelo(Fal)} ${AU}, atribuído pelas **PARTES** para fins de partilha, é de ${valorB('m_valor', 'valor total dos bens')}.` };
+  const partilha = { tt: 'PARTILHA', tr: 'DA PARTILHA', x: F('m_partilha', 'forma da partilha (quinhão de cada herdeiro e meação)') };
+  const op = v('m_imp');
+  const itcmd = { tt: 'IMPOSTO', tr: 'DO IMPOSTO DE TRANSMISSÃO', x: op === 'pago'
+    ? `Foi recolhido o Imposto sobre a Transmissão Causa Mortis e Doação de Quaisquer Bens ou Direitos – ITCMD, no valor de ${valorB('m_impValor', 'valor do ITCMD')}, sobre a base de cálculo de ${valorB('m_impBase', 'base de cálculo')}, conforme ${F('m_impDocs', 'documentos do ITCMD (SEFA/PA)')}, nos termos da Lei Estadual nº 5.529/1989.`
+    : op === 'nao_incide' ? '[[hipótese de isenção ou não incidência do ITCMD reconhecida pela SEFA/PA xxx]].'
+    : '[[comprovante de recolhimento do ITCMD xxx – o recolhimento deve anteceder a lavratura (art. 15 da Resolução CNJ nº 35/2007)]].' };
+  const certidoes = { tt: 'CERTIDÕES E DOCUMENTOS', tr: 'DAS CERTIDÕES', x: `Foram apresentados os documentos exigidos pelo art. 22 da Resolução CNJ nº 35/2007, em especial a certidão de óbito, os documentos de identidade das partes e ${art.do(Fal)} ${AU}, as certidões comprobatórias do vínculo de parentesco, as certidões de casamento do cônjuge sobrevivente e dos herdeiros casados, a certidão de propriedade do imóvel e a certidão negativa de tributos${c.rural ? ', além do Certificado de Cadastro de Imóvel Rural – CCIR' : ''}.` + (c.trad ? ' Documentos arquivados em classificador próprio desta Serventia.' : '') };
+  const declA = `os ${H} declaram que não há outros herdeiros, cônjuge ou companheiro sobrevivente além dos indicados nesta escritura, nem outros bens a inventariar ou dívidas do espólio`;
+  const partes = [autor, herdeiros, itAdvogado('art. 610, § 2º, do Código de Processo Civil'), itIdentidade(c)];
+  const meio = [vontade, inventariante, testamento, itObjeto(c), itTitulo(c), itCadastro(c), monte, partilha, itcmd, certidoes];
+  return c.trad
+    ? [...partes, ...meio, itLGPD(c), itDeclaracoes(c, declA), itConsultas(c), itRegistro(c)]
+    : [...partes, ...meio, itDeclaracoes(c, declA), itConsultas(c), itLGPD(c), itRegistro(c)];
+}
+
+function itensDivorcio(c) {
+  const DV = R([c.A, c.rA]);
+  const div = { tt: 'OUTORGANTES / DIVORCIANDOS', tr: 'DOS DIVORCIANDOS', x: `${F('m_aQual', 'qualificação dos divorciandos')}, doravante denominados ${DV}.` + (c.trad ? ' Documentos arquivados em classificador próprio desta Serventia.' : '') };
+  const vontade = { tt: 'VONTADE DAS PARTES', tr: 'DA VONTADE DAS PARTES', x: `Os ${DV}, maiores, capazes e concordes, no exercício da livre escolha do Tabelionato de Notas assegurada pelo art. 8º da Lei nº 8.935/1994, e nos termos do art. 226, § 6º, da Constituição Federal, do art. 733 do Código de Processo Civil e da Resolução CNJ nº 35/2007, declaram a livre decisão de dissolver o vínculo matrimonial pelo divórcio consensual, nos termos a seguir.` };
+  const casamento = { tt: 'CASAMENTO', tr: 'DO CASAMENTO', x: `Os ${DV} contraíram casamento em ${F('m_casData', 'data do casamento')}, sob o regime da ${v('m_regime')}, conforme Certidão de Casamento de matrícula nº ${F('m_casMat', 'matrícula da certidão de casamento')}, expedida pelo ${F('m_casCart', 'cartório expedidor')}.` };
+  const gravidez = 'e a divorcianda declara que não se encontra em estado gravídico ou que desconhece essa circunstância';
+  const filhos = { tt: 'FILHOS', tr: 'DOS FILHOS', x: {
+    sem: `Os ${DV} declaram que não possuem filhos comuns, ${gravidez}.`,
+    maiores: `Os ${DV} declaram que os filhos comuns são maiores e capazes, ${gravidez}.`,
+    judicial: `Os ${DV} declaram que as questões relativas à guarda, à convivência e aos alimentos dos filhos menores foram previamente resolvidas no âmbito judicial, nos autos do processo nº ${F('m_proc', 'número do processo')}, nos termos da Resolução CNJ nº 35/2007, com a redação da Resolução CNJ nº 571/2024, ${gravidez}.`
+  }[v('m_filhos')] };
+  const nomeIt = { tt: 'NOME', tr: 'DO NOME', x: v('m_nomeOp') === 'volta'
+    ? `A divorcianda voltará a usar o nome de solteira: ${v('m_nomeSolteira') ? '**' + v('m_nomeSolteira').toUpperCase() + '**' : '[[nome de solteira xxx]]'}.`
+    : `Os ${DV} manterão os nomes atuais.` };
+  const alim = { tt: 'ALIMENTOS', tr: 'DOS ALIMENTOS', x: v('m_alimOp') === 'fixa' ? F('m_alim', 'descrição dos alimentos') : `Os ${DV} dispensam reciprocamente o pagamento de alimentos, por possuírem meios próprios de subsistência.` };
+  const partilha = { tt: 'PARTILHA', tr: 'DA PARTILHA', x: `O imóvel descrito no item {{objeto}}, ao qual as **PARTES** atribuem o valor de ${valorB('m_valor', 'valor do imóvel')}, fica partilhado da seguinte forma: ${F('m_partilha', 'forma da partilha')}.` };
+  const divorcio = { tt: 'DIVÓRCIO', tr: 'DO DIVÓRCIO', x: `Por esta escritura, fica dissolvido o casamento dos ${DV} pelo divórcio consensual, que independe de homologação judicial e constitui título hábil para o registro civil e o registro de imóveis, nos termos do art. 733, § 1º, do Código de Processo Civil.` };
+  const certidoes = { tt: 'CERTIDÕES E DOCUMENTOS', tr: 'DAS CERTIDÕES', x: `Foram apresentados os documentos exigidos pela Resolução CNJ nº 35/2007, em especial a certidão de casamento atualizada, o pacto antenupcial, se houver, os documentos de identidade dos ${DV}, as certidões de nascimento dos filhos, se houver, e os documentos que comprovam a titularidade dos bens partilhados.` + (c.trad ? ' Documentos arquivados em classificador próprio desta Serventia.' : '') };
+  const averb = `Os ${DV} foram orientados a averbar esta escritura à margem do assento de casamento, no Registro Civil das Pessoas Naturais competente, nos termos do art. 10, I, do Código Civil.`;
+  const partes = [div, itAdvogado('art. 733, § 2º, do Código de Processo Civil'), itIdentidade(c)];
+  const meio = [vontade, casamento, filhos, nomeIt, alim, itObjeto(c), itTitulo(c), itCadastro(c), partilha, itImposto(c), divorcio, certidoes];
+  return c.trad
+    ? [...partes, ...meio, itLGPD(c), itDeclaracoes(c), itConsultas(c), itRegistro(c, averb)]
+    : [...partes, ...meio, itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c, averb)];
+}
+
+const TITULOS = {
+  cv: 'ESCRITURA PÚBLICA DE COMPRA E VENDA', dacao: 'ESCRITURA PÚBLICA DE DAÇÃO EM PAGAMENTO',
+  inventario: 'ESCRITURA PÚBLICA DE INVENTÁRIO E PARTILHA', divorcio: 'ESCRITURA PÚBLICA DE DIVÓRCIO CONSENSUAL COM PARTILHA DE BENS'
+};
+
+function gerarMinuta() {
+  const c = contexto();
+  const itens = { cv: itensCompraVenda, dacao: itensDacao, inventario: itensInventario, divorcio: itensDivorcio }[c.m](c);
+
+  let titulo;
+  if (c.m === 'inventario') titulo = `**${TITULOS.inventario}** DOS BENS DEIXADOS POR ${v('m_falNome') ? '**' + v('m_falNome').toUpperCase() + '**' : '[[nome do autor da herança xxx]]'}, NA FORMA ABAIXO:`;
+  else if (c.m === 'divorcio') titulo = `**${TITULOS.divorcio}** QUE FAZEM ${nomesTitulo(c.A)}, NA FORMA ABAIXO:`;
+  else {
+    const rA = nome(c.rA, c.A), rB = nome(c.rB, c.B);
+    titulo = c.trad
+      ? `**${TITULOS[c.m]}** QUE TEM COMO ${rA} ${nomesTitulo(c.A)} E COMO ${rB} ${nomesTitulo(c.B)}, NA FORMA ABAIXO:`
+      : `**${TITULOS[c.m]}** QUE FAZEM, COMO ${rA}, ${nomesTitulo(c.A)} E, COMO ${rB}, ${nomesTitulo(c.B)}, NA FORMA ABAIXO:`;
+  }
+
+  const data = dataExtenso(v('m_data')) || '[[data da lavratura por extenso xxx]]';
+  const abertura = c.trad
+    ? `Saibam quantos este público instrumento virem que, ${data}, neste Distrito, Comarca e Município de Bujaru – PA, em Cartório, perante mim, **LUÍS ALBERTO FRAZÃO MODESTO – Tabelião e Registrador Substituto**, compareceram:`
+    : `Saibam todos quantos virem este público instrumento que, ${data}, neste Distrito, Município e Comarca de Bujaru, Estado do Pará, em Cartório, perante mim, Tabelião Substituto, compareceram as partes a seguir qualificadas.`;
+  const selo = F('m_selo', 'número do selo');
+  const quemAssina = c.m === 'inventario' || c.m === 'divorcio'
+    ? `os ${R([c.A, c.rA])}, o **ADVOGADO**`
+    : `${art.o(c.A)} ${R([c.A, c.rA])}, ${art.o(c.B)} ${R([c.B, c.rB])}`;
+  if (!c.trad) itens.push({ tr: 'DO ENCERRAMENTO', x: `Assim o disseram e me pediram que lavrasse este instrumento, o qual, lido em voz alta e achado conforme, aceitam, outorgam e assinam, dispensada a presença de testemunhas instrumentárias. Eu, **LUÍS ALBERTO FRAZÃO MODESTO**, Tabelião e Registrador Substituto, o lavrei, conferi, li e subscrevo e encerro o ato. Dou fé. Selo: ${selo}.` });
+
+  // Numeração romana e referências cruzadas entre itens ({{objeto}}, {{titulo}}, {{divida}}).
+  const ref = {};
+  itens.forEach((it, i) => { if (it.k) ref[it.k] = romano(i + 1); });
+  let corpo = abertura + ' ' + itens.map((it, i) => `__${romano(i + 1)} – ${c.trad ? (it.tt || it.tr) : (it.tr || it.tt)}:__ ${it.x}`).join(' ');
+  if (c.trad) corpo += ` **ASSIM** o disseram, do que **DOU FÉ**, me pediram este público instrumento, que lhes lavrei nas minhas notas. **NADA MAIS ME FOI DITO**, lido e achado conforme, aceitam, concordam e outorgam, dispensada a presença das testemunhas instrumentárias, do que **DOU FÉ**. Eu, **LUÍS ALBERTO FRAZÃO MODESTO – Tabelião e Registrador Substituto**, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assinam ${quemAssina} e o **TABELIÃO SUBSTITUTO**.`;
+  corpo = corpo.replace(/\{\{(\w+)\}\}/g, (_, k) => ref[k] || `[[item ${k} xxx]]`);
+
+  const ass = [];
+  const addGrupo = (G, base) => G.pessoas.forEach(p => ass.push([p.nome.toUpperCase(), p.papel || cap(nome(base, { pl: false, g: G.g }).toLowerCase())]));
+  addGrupo(c.A, c.rA);
+  if (c.B) addGrupo(c.B, c.rB);
+  if (c.m === 'inventario' || c.m === 'divorcio') ass.push([(v('m_adv').replace(/\*\*/g, '').split(',')[0].trim() || 'ADVOGADO').toUpperCase(), 'Advogado']);
+  ass.push(['LUÍS ALBERTO FRAZÃO MODESTO', 'Tabelião e Registrador Substituto']);
+
+  const livro = v('m_livro') ? `**LIVRO ${v('m_livro')}**` : '[[livro xxx]]';
+  const folhas = v('m_folhas') ? `**FOLHAS ${v('m_folhas')}**` : '[[folhas xxx]]';
+  const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
+  $('mDoc').innerHTML = p('dir', `${livro} – ${folhas}`) + p('', titulo) + p('corpo', corpo) +
+    p('c', `Bujaru/PA, ${dataCurta(v('m_data')) || '[[data xxx]]'}.`) +
+    ass.map(([n, r]) => `<div class="ass">______________________________________________<br><b>${esc(n)}</b><br>${esc(r)}</div>`).join('');
+}
+
+function aoMudarModal() {
+  const m = v('m_modal'), imovel = v('m_imovel');
+  document.querySelectorAll('#mForm fieldset[data-modal]').forEach(f => f.classList.toggle('hidden', !f.dataset.modal.split(' ').includes(m)));
+  document.querySelectorAll('#mForm fieldset[data-imovel]').forEach(f => f.classList.toggle('hidden', f.dataset.imovel !== imovel));
+  $('lblA').textContent = { cv: 'Vendedores', dacao: 'Devedores', inventario: 'Herdeiros e meeiro', divorcio: 'Divorciandos' }[m];
+  $('lblB').textContent = { cv: 'Compradores', dacao: 'Credores' }[m] || '';
+  $('boxAGen').classList.toggle('hidden', m === 'divorcio' || m === 'inventario');
+  $('lblValor').textContent = { cv: 'Preço e pagamento', dacao: 'Valor da dívida', inventario: 'Valor dos bens e partilha', divorcio: 'Valor do imóvel e partilha' }[m];
+  $('lblValorCampo').textContent = { cv: 'Preço (R$)', dacao: 'Valor da dívida / atribuído ao imóvel (R$)', inventario: 'Monte-mor (R$)', divorcio: 'Valor atribuído ao imóvel (R$)' }[m];
+  $('lblImp').textContent = m === 'inventario' ? 'Imposto (ITCMD)' : 'Imposto (ITBI)';
+  if (aoMudarModal.ultimo !== m) {
+    $('m_imp').value = { cv: 'pendente', dacao: 'pendente', inventario: 'pago', divorcio: 'nao_incide' }[m];
+    aoMudarModal.ultimo = m;
+  }
+  gerarMinuta();
+}
+
+function nomeArquivoMinuta() {
+  const c = contexto(), prim = p => (p ? semAcento(p.nome.split(' ')[0]).toUpperCase() : 'xxx');
+  const tipo = { cv: 'COMPRA E VENDA', dacao: 'DACAO EM PAGAMENTO', inventario: 'INVENTARIO', divorcio: 'DIVORCIO' }[c.m];
+  const partes = c.m === 'inventario' ? `DE ${semAcento(v('m_falNome').split(' ')[0] || 'xxx').toUpperCase()}`
+    : c.m === 'divorcio' ? `${prim(c.A.pessoas[0])} E ${prim(c.A.pessoas[1])}` : `${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])}`;
+  return nomePasta(`${v('m_num') || 'NNN'} - ESCRITURA ${tipo} ${partes} - LIVRO ${v('m_livro') || 'xxx'} (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`, 180);
+}
+
+function blobMinutaWord() {
+  gerarMinuta();
+  const estilo = `body{font-family:'Arial Narrow',Arial,sans-serif;font-size:12pt} p{text-align:justify;margin:0 0 12pt;line-height:150%}
+    .dir{text-align:right} .c{text-align:center} .corpo{text-indent:3.75cm} .red{color:#FF0000;font-weight:bold}
+    .ass{text-align:center;margin-top:28pt;page-break-inside:avoid}`;
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${estilo}</style></head><body>${$('mDoc').innerHTML}</body></html>`;
+  return new Blob(['﻿', doc], { type: 'application/msword' });
+}
+
+// Preenche a minuta a partir de uma escritura cadastrada.
+const NATUREZA_MODAL = n => /INVENT/i.test(n) ? 'inventario' : /DIV[OÓ]RCIO/i.test(n) ? 'divorcio' : /DA[CÇ][AÃ]O/i.test(n) ? 'dacao' : 'cv';
+async function minutaDaEscritura(id) {
+  const e = id && await Reg.get('escrituras', id);
+  if (!e) return;
+  $('mEsc').value = id;
+  $('m_modal').value = NATUREZA_MODAL(e.natureza || '');
+  const limpar = s => String(s || '').replace(/^[A-ZÇÃÁÉÍÓÚ ]+:\s*/i, '').split(/\s+E\s+|,\s*/).map(x => x.trim()).filter(Boolean).join('\n');
+  if (e.outorgantes && !v('m_aNomes')) $('m_aNomes').value = limpar(e.outorgantes);
+  if (e.outorgados && !v('m_bNomes')) $('m_bNomes').value = limpar(e.outorgados);
+  if (e.livro) $('m_livro').value = e.livro;
+  if (e.folhas) $('m_folhas').value = e.folhas;
+  if (e.selo) $('m_selo').value = e.selo;
+  if (e.base) $('m_valor').value = brl(e.base);
+  $('m_imovel').value = e.rural ? 'rural' : 'urbano';
+  aoMudarModal();
+}
+
+/* --------------------------- Ligações --------------------------- */
+function iniciarFerramentas() {
+  montarTipos(); montarAvulsos(); montarItens(); calcular(); montarChecklist();
+  formatarAoSair($('valor'));
+  $('tipo').addEventListener('change', () => { montarItens(); calcular(); });
+  $('item').addEventListener('change', () => { atualizarQtd(); calcular(); });
+  ['valor', 'qtd'].forEach(id => $(id).addEventListener('input', calcular));
+  ['nOnus', 'rural'].forEach(id => $(id).addEventListener('change', calcular));
+  $('copiar').addEventListener('click', () => copiar(resumoTexto, $('copiar')));
+  $('irChecklist').addEventListener('click', () => {
+    $('cModal').value = tipoAtual().modal || 'cv';
+    $('cImovel').value = $('rural').checked ? 'rural' : 'urbano';
+    montarChecklist(); abrirSub('check');
+  });
+  $('irOrcamento').addEventListener('click', () => Orc.novo({ preco: lerValor($('valor').value), onus: +$('nOnus').value, rural: $('rural').checked }));
+
+  ['cModal', 'cImovel', 'cCasados', 'cPJ', 'cProc', 'cCond', 'cMenor'].forEach(id => $(id).addEventListener('change', montarChecklist));
+  $('cCopiar').addEventListener('click', () => {
+    const secs = listaDocumentos($('cModal').value, $('cImovel').value, opcoesChecklist());
+    const txt = [$('cTitulo').textContent, ''].concat(...secs.map(s => [s.titulo.toUpperCase(), ...s.itens.map(i => '[ ] ' + i), ''])).join('\n');
+    copiar(txt, $('cCopiar'));
+  });
+  $('cMinuta').addEventListener('click', () => {
+    $('m_modal').value = $('cModal').value; $('m_imovel').value = $('cImovel').value; $('m_cond').checked = $('cCond').checked;
+    aoMudarModal(); abrirSub('minuta');
+  });
+
+  ['m_modal', 'm_imovel'].forEach(id => $(id).addEventListener('change', aoMudarModal));
+  document.querySelectorAll('#mForm input, #mForm select, #mForm textarea').forEach(el => {
+    if (['m_modal', 'm_imovel', 'mEsc'].includes(el.id)) return;
+    el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', gerarMinuta);
+  });
+  ['m_venal', 'm_valor', 'm_impValor', 'm_impBase'].forEach(id => formatarAoSair($(id)));
+  $('m_data').value = hojeISO();
+  $('mEsc').addEventListener('change', () => minutaDaEscritura($('mEsc').value));
+  $('mWord').addEventListener('click', () => baixarBlob(blobMinutaWord(), nomeArquivoMinuta() + '.doc'));
+  $('mCopiar').addEventListener('click', () => copiar($('mDoc').innerText, $('mCopiar')));
+  $('mSalvar').addEventListener('click', async () => {
+    const id = $('mEsc').value;
+    if (!id) return aviso('Escolha a escritura (pasta) no topo do formulário.', 'erro');
+    const b = $('mSalvar'); b.disabled = true;
+    try {
+      const nomeArq = await Esc.salvarNaSubpasta(id, '01 - MINUTA', nomeArquivoMinuta() + '.doc', blobMinutaWord());
+      aviso('Minuta salva em 01 - MINUTA: ' + nomeArq);
+    } catch (e) { aviso(e.message, 'erro'); } finally { b.disabled = false; }
+  });
+  aoMudarModal();
+}

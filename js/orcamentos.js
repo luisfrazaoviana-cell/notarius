@@ -44,7 +44,11 @@ const Orc = {
     const comprador = String(e.outorgados || '').replace(/^[A-ZÇÃÁÉÍÓÚ ()]+:\s*/i, '');
     if (!$('orcNome').value) $('orcNome').value = comprador;
     if (!$('orcImovel').value) $('orcImovel').value = e.imovel || '';
-    if (e.base && !$('orcVenal').value && !$('orcPreco').value) $('orcPreco').value = brl(e.base);
+    // Preço e valor venal guardados separados (desde a 0.4.9); escrituras antigas só têm a base.
+    if (!$('orcVenal').value && !$('orcPreco').value) {
+      if (e.preco || e.venal) { if (e.preco) $('orcPreco').value = brl(e.preco); if (e.venal) $('orcVenal').value = brl(e.venal); }
+      else if (e.base) $('orcPreco').value = brl(e.base);
+    }
     $('orcRural').checked = !!e.rural;
   },
 
@@ -148,7 +152,8 @@ const Orc = {
       await Reg.salvar('orcamentos', rec);
       if (escId) {
         const e = await Reg.get('escrituras', escId);
-        Object.assign(e, { base: rec.base, codigo: rec.codigo, emolumentos: rec.totalAto, orcTotal: rec.total, rural: $('orcRural').checked });
+        Object.assign(e, { base: rec.base, preco: lerValor($('orcPreco').value) || 0, venal: lerValor($('orcVenal').value) || 0,
+          codigo: rec.codigo, emolumentos: rec.totalAto, orcTotal: rec.total, rural: $('orcRural').checked });
         await Reg.salvar('escrituras', e);
       }
       baixarBlob(blob, nomeArq);

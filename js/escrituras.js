@@ -263,6 +263,10 @@ const Esc = {
     if ((!livro || !lerFolhas(folhas)) && !await confirmar('Livro e folhas',
       `${!livro ? 'O livro' : 'As folhas'}${!livro && !lerFolhas(folhas) ? ' e as folhas' : ''} ficaram em branco. Sem isso o ato não entra na conferência do livro nem na CENSEC (dá para completar depois na escritura). Marcar como LAVRADA assim mesmo?`,
       'Marcar assim mesmo', 'Voltar')) return;
+    // Ato com valor (compra e venda, dação, cessão, doação) sem emolumentos não entra no repasse nem nas receitas: avisa antes.
+    if (/COMPRA E VENDA|DA[CÇ][AÃ]O|CESS[AÃ]O|DOA[CÇ][AÃ]O/i.test(r.natureza || '') && !r.emolumentos && !await confirmar('Emolumentos',
+      'Esta escritura está sem o valor dos emolumentos (faça o orçamento ou preencha "Total emolumentos" na escritura). Sem isso ela fica fora do repasse ao Cartório de Santana. Marcar como LAVRADA assim mesmo?',
+      'Marcar assim mesmo', 'Voltar')) return;
     // Confere na hora se as folhas encostam ou se sobrepõem às de outro ato do mesmo livro.
     if (livro && lerFolhas(folhas)) {
       const f = lerFolhas(folhas);

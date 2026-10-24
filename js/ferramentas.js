@@ -993,7 +993,9 @@ async function minutaDaEscritura(id) {
   if (e.livro) $('m_livro').value = e.livro;
   if (e.folhas) $('m_folhas').value = e.folhas;
   if (e.selo) $('m_selo').value = e.selo;
-  if (e.base) $('m_valor').value = brl(e.base);
+  // Só o preço declarado vai para o preço da minuta; a base de cálculo pode ser o valor venal.
+  if (e.preco) $('m_valor').value = brl(e.preco);
+  if (e.venal && !v('m_venal')) $('m_venal').value = brl(e.venal);
   $('m_imovel').value = e.rural ? 'rural' : 'urbano';
   aoMudarModal();
 }

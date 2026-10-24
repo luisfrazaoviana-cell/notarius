@@ -171,6 +171,8 @@
           </select>
           <label class="f" for="cImovel">Imóvel</label>
           <select id="cImovel"><option value="urbano">Urbano</option><option value="rural">Rural</option></select>
+          <label class="f" for="cCliente">Cliente (opcional, sai no PDF e na cópia)</label>
+          <input id="cCliente" type="text" autocomplete="off" placeholder="Ex.: João da Silva">
           <h3>Situações</h3>
           <div class="checks">
             <label><input type="checkbox" id="cCasados"> Há parte casada ou em união estável</label>
@@ -185,7 +187,7 @@
           <div id="cLista"></div>
           <div class="acoes no-print">
             <button type="button" id="cCopiar">Copiar lista</button>
-            <button type="button" onclick="window.print()">Imprimir</button>
+            <button type="button" id="cPDF">Imprimir / PDF</button>
             <button type="button" class="prim" id="cMinuta">Abrir minuta desta escritura</button>
           </div>
           <div class="aviso">Lista de referência (Lei 7.433/85, Decreto 93.240/86, CNSNR-PA, Resolução CNJ 35/2007). Prazos usuais: certidão de matrícula, 30 dias; certidões de registro civil, 90 dias. Confira as exigências do caso concreto.</div>

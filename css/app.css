@@ -87,6 +87,14 @@ select, input[type=text], input[type=number], input[type=date], input[type=month
   width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
 textarea { min-height: 70px; resize: vertical; }
 textarea.curto { min-height: 44px; }
+/* Semáforo "Pronta para lavrar" (escritura em MINUTA) */
+.pronta { border-radius: 10px; padding: 10px 12px; margin: 6px 0 12px; border: 1px solid var(--line); font-size: 13px; }
+.pronta.verde { background: #e6f4ea; border-color: #b7dfc2; }
+.pronta.amarelo { background: var(--gold-soft); border-color: #e8d3a2; }
+.pronta.vermelho { background: var(--red-soft); border-color: #f0c2c2; }
+.pronta ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+.pronta li span { display: inline-block; width: 16px; font-weight: 700; text-align: center; }
+.pronta li.p-ok span { color: var(--ok); } .pronta li.p-aviso span { color: var(--gold); } .pronta li.p-falta span { color: var(--red); }
 label.chk { display: block; font-size: 13px; margin: 2px 0 4px; color: var(--muted, #555); }
 select:focus, input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 .valor { position: relative; }

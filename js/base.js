@@ -90,6 +90,12 @@ const CFG_PADRAO = {
   // Comunicações: conferências das folhas, envios autorizados e folhas inutilizadas (comuns entre aparelhos).
   comConferencias: {}, comEnvios: {}, folhasInutilizadas: {}, comInicio: '2026-10-01',
   pastasProprias: [],   // pastas de parceiro que, na verdade, são captação própria do Luis
+  // Última referência da sequência oficial do cartório (servidor + ACSIV), por cartório e tipo de livro (E = escrituras,
+  // P = procurações). O "Próximo ato" soma a ela os atos lançados no app depois. Consulta de 24/10/2026.
+  sequencia: {
+    'bujaru|E': { num: 137, livro: '024-E', folhas: '273/274', selo: '199491-A', data: '2026-10-19', fonte: 'servidor e ACSIV, 24/10/2026' },
+    'bujaru|P': { num: 36, livro: '024-P', folhas: '046', selo: '336177-A', data: '2026-10-20', fonte: 'servidor e ACSIV, 24/10/2026' }
+  },
   ultimoBackup: 0, syncLido: 0, syncEscrito: 0
 };
 let CFG = { ...CFG_PADRAO };

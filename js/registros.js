@@ -3,7 +3,7 @@
 // Quando o mesmo registro muda nos dois aparelhos, vale a alteração mais recente.
 
 const ARQ_DADOS = 'NOTARIUS-DADOS.json';
-const CFG_COMPARTILHADA = ['repassesPagos', 'cartorios', 'tabelas', 'comConferencias', 'comEnvios', 'folhasInutilizadas', 'comInicio', 'pastasProprias'];
+const CFG_COMPARTILHADA = ['repassesPagos', 'cartorios', 'tabelas', 'comConferencias', 'comEnvios', 'folhasInutilizadas', 'comInicio', 'pastasProprias', 'sequencia'];
 
 const Reg = {
   timer: null, sincronizando: null, ultimaSinc: 0,

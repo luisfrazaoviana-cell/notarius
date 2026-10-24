@@ -133,6 +133,7 @@ const App = {
       <div class="kpi"><small>A receber de clientes</small><b>R$ ${brl(soma(aReceber, e => e.emolumentos))}</b><span>${aReceber.length} escritura(s)</span></div>
       <div class="kpi clic" data-ir="escrituras"><small>Minutas em andamento</small><b>${minutas.length}</b><span>${prontas} pronta(s) para lavrar</span></div>
       ${renovar ? `<div class="kpi clic" data-ir="escrituras"><small>Certidões a renovar</small><b style="color:var(--red)">${renovar}</b><span>vencidas ou vencendo em 7 dias</span></div>` : ''}
+      <div class="kpi clic" data-ir="receitas"><small>Receita futura (líquida)</small><b>R$ ${brl(rec.futuraLiquida)}</b><span>orçamentos R$ ${brl(rec.orcAberto)} − repasse R$ ${brl(rec.repFuturo)} + honorários R$ ${brl(rec.honAberto)}</span></div>
       <div class="kpi clic" data-ir="receitas"><small>Orçamentos em aberto</small><b>R$ ${brl(rec.orcAberto)}</b><span>${rec.orcAbertoQtd} orçamento(s) não pago(s)</span></div>
       <div class="kpi clic" data-ir="receitas"><small>Meus honorários a receber</small><b>R$ ${brl(rec.honAberto)}</b><span>${rec.honAbertoQtd} ato(s)</span></div>
       <div class="kpi clic" data-ir="comunicacoes"><small>Comunicações pendentes</small><b>${com.qtd}</b><span>${com.prazo ? 'próximo prazo ' + dataBR(com.prazo) : 'em dia'}</span></div>`;

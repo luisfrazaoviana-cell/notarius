@@ -23,12 +23,14 @@ const Rec = {
     const linhasOrc = [
       ...atos.filter(e => this.valorOrc(e) > 0).map(e => ({
         tipo: 'ato', id: e.id, data: dataOrc[e.id] || e.dataLavratura || '', parceiro: e.parceiro, partes: this.partes(e), imovel: e.imovel || '',
-        codigo: e.codigo || '', valor: this.valorOrc(e), situacao: e.situacao, pago: !!e.recebido, dataPago: e.dataRecebimento || '', nome: e.nome
+        codigo: e.codigo || '', valor: this.valorOrc(e), situacao: e.situacao, pago: !!e.recebido, dataPago: e.dataRecebimento || '', nome: e.nome,
+        rep: Ctl.repasse(e) // parte do Cartório de Santana (45% dos emolumentos; procuração 0)
       })),
       // Orçamentos avulsos (sem pasta de escritura).
       ...orcs.filter(o => !o.escId).map(o => ({
         tipo: 'avulso', id: o.id, data: o.data, parceiro: 'AVULSO (SEM PASTA)', partes: o.nome, imovel: o.imovel || '',
-        codigo: o.codigo || '', valor: o.total || 0, situacao: 'ORÇAMENTO', pago: !!o.pago, dataPago: o.dataPago || '', nome: o.nome
+        codigo: o.codigo || '', valor: o.total || 0, situacao: 'ORÇAMENTO', pago: !!o.pago, dataPago: o.dataPago || '', nome: o.nome,
+        rep: Ctl.repasse({ natureza: 'ESCRITURA', emolumentos: o.totalAto || 0 })
       }))
     ];
     const linhasHon = atos.filter(e => e.honorarios > 0).map(e => ({
@@ -44,8 +46,12 @@ const Rec = {
   async resumo() {
     const { linhasOrc, linhasHon } = await this.dados();
     const aberto = linhasOrc.filter(x => !x.pago), honAberto = linhasHon.filter(x => !x.pago);
+    // Receita futura (pedido do usuário, 24/10/2026): orçamentos em aberto entram como receita a receber; desconta-se o
+    // repasse de 45% que irá ao Cartório de Santana e somam-se os honorários a receber = o que fica para o Luis.
+    const repFuturo = aberto.reduce((s, x) => s + (x.rep || 0), 0), honAb = this.somar(honAberto);
     return { orcTotal: this.somar(linhasOrc), orcQtd: linhasOrc.length, orcAberto: this.somar(aberto), orcAbertoQtd: aberto.length,
-      honTotal: this.somar(linhasHon), honAberto: this.somar(honAberto), honAbertoQtd: honAberto.length, honRecebido: this.somar(linhasHon, x => x.pago) };
+      honTotal: this.somar(linhasHon), honAberto: honAb, honAbertoQtd: honAberto.length, honRecebido: this.somar(linhasHon, x => x.pago),
+      repFuturo, futuraLiquida: this.somar(aberto) - repFuturo + honAb };
   },
 
   /* ------------------------------ Tela ------------------------------ */
@@ -69,6 +75,8 @@ const Rec = {
       // Em destaque só o que está em aberto; os totais gerais ficam recolhidos (abrem ao tocar).
       $('recKpis').innerHTML = `
         <div class="kpi destaque"><small>Em aberto (não pagos)</small><b>R$ ${brl(this.somar(linhasOrc, x => !x.pago))}</b><span>${linhasOrc.filter(x => !x.pago).length} orçamento(s)</span></div>
+        ${(() => { const ab = linhasOrc.filter(x => !x.pago), rep = ab.reduce((s, x) => s + (x.rep || 0), 0), hon = this.somar(linhasHon, x => !x.pago);
+          return `<div class="kpi"><small>Receita futura (líquida)</small><b>R$ ${brl(this.somar(ab) - rep + hon)}</b><span>em aberto − repasse 45% (R$ ${brl(rep)}) + honorários a receber (R$ ${brl(hon)})</span></div>`; })()}
         ${filtrado ? `<div class="kpi"><small>Filtro atual</small><b>R$ ${brl(this.somar(vis))}</b><span>${vis.length} orçamento(s)</span></div>` : ''}
         <details class="totais"><summary>Ver totais gerais</summary>
           Orçamentos feitos: <b>R$ ${brl(this.somar(linhasOrc))}</b> (${linhasOrc.length}) · Já pagos: <b>R$ ${brl(this.somar(linhasOrc, x => x.pago))}</b> (${linhasOrc.filter(x => x.pago).length})</details>`;

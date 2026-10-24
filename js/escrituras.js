@@ -12,6 +12,70 @@ const NATUREZA_PADRAO = 'ESCRITURA PÚBLICA DE COMPRA E VENDA';
 // Pastas criadas no modo demonstração (ids curtos "dxxxxxxxx") não podem ir para os dados do Drive.
 const ehDeDemo = r => /^d[a-z0-9]{8}$/.test(r.driveId || '');
 
+// "Pronta para lavrar" (pedido do usuário, 24/10/2026): conferência de cada escritura em MINUTA – partes,
+// emolumentos, pagamento, certidões do vendedor (na validade), inteiro teor (30 dias), certidão de casamento (90 dias),
+// CNIB e minuta salva. Validade das certidões em dias: CNDT 180 (CLT, art. 642-A, § 4º); TJPA, TRF1 e SEFA trazem o
+// "válida até" impresso – padrões cautelosos abaixo, ou o 4º campo da linha ("nº | data | resultado | válida até").
+const VALIDADE_CERT = { tj: 90, tst: 180, trf: 30, sefa: 180 };
+const ROTULO_CERT = { tj: 'Ações cíveis – TJPA', tst: 'CNDT – TST', trf: 'Cível – TRF1', sefa: 'Dívida ativa – SEFA/PA' };
+const Pronta = {
+  // "dd/mm/aaaa" → Date (meio-dia, para não errar o dia pelo fuso)
+  data(s) { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1], 12) : null; },
+  hoje() { const d = new Date(); d.setHours(12, 0, 0, 0); return d; },
+  diasAte(d) { return Math.round((d - this.hoje()) / 864e5); },
+  nomes(r) { return String(r.outorgantes || '').replace(/^[A-ZÇÃÁÉÍÓÚ ]+:\s*/i, '').split(/\s+E\s+|,\s*/).map(x => x.trim()).filter(Boolean); },
+  temValor(r) { return /COMPRA E VENDA|DA[CÇ][AÃ]O|CESS[AÃ]O|DOA[CÇ][AÃ]O|INVENT|DIV[OÓ]RCIO/i.test(r.natureza || NATUREZA_PADRAO); },
+  // Itens: { st: 'ok' | 'aviso' | 'falta', txt }. Só para escrituras (procuração não passa por aqui).
+  checar(r) {
+    const it = [], add = (st, txt) => it.push({ st, txt }), ce = r.certidoes || {}, disp = ce.disp || {};
+    add(r.outorgantes && r.outorgados ? 'ok' : 'falta', r.outorgantes && r.outorgados ? 'Partes informadas' : 'Informar outorgantes e outorgados');
+    if (this.temValor(r)) {
+      add(r.emolumentos ? 'ok' : 'falta', r.emolumentos ? 'Emolumentos definidos (orçamento)' : 'Fazer o orçamento (emolumentos)');
+      add(r.recebido ? 'ok' : 'aviso', r.recebido ? 'Cliente pagou' : 'Pagamento do cliente ainda não marcado');
+    }
+    const nV = Math.max(1, this.nomes(r).length);
+    if (/COMPRA E VENDA|DA[CÇ][AÃ]O|CESS[AÃ]O|DOA[CÇ][AÃ]O/i.test(r.natureza || NATUREZA_PADRAO)) {
+      for (const k of ['tj', 'tst', 'trf', 'sefa']) {
+        if (disp[k]) { add('ok', `${ROTULO_CERT[k]}: dispensada pelo comprador`); continue; }
+        const lns = String(ce[k] || '').split('\n').map(s => s.trim()).filter(Boolean);
+        if (lns.length < nV) { add('falta', `${ROTULO_CERT[k]}: falta${nV > 1 ? ` (${lns.length} de ${nV} vendedores)` : ''}`); continue; }
+        // vence: "válida até" informado, ou data de emissão + validade padrão
+        const venc = lns.map(l => { const p = l.split('|').map(s => s.trim()); const ate = this.data(p[3]); const em = this.data(p[1]); return ate || (em && new Date(em.getTime() + VALIDADE_CERT[k] * 864e5)); });
+        if (venc.some(d => !d)) { add('falta', `${ROTULO_CERT[k]}: falta a data de emissão`); continue; }
+        const dias = Math.min(...venc.map(d => this.diasAte(d)));
+        add(dias < 0 ? 'falta' : dias <= 7 ? 'aviso' : 'ok', `${ROTULO_CERT[k]}: ${dias < 0 ? `VENCIDA há ${-dias} dia(s)` : dias <= 7 ? `vence em ${dias} dia(s)` : `válida (${dias} dias)`}`);
+      }
+      const it30 = this.data(ce.riData);
+      add(!it30 ? 'falta' : this.diasAte(it30) < -30 ? 'falta' : this.diasAte(it30) < -23 ? 'aviso' : 'ok',
+        !it30 ? 'Certidão de inteiro teor: informar a data' : `Inteiro teor de ${ce.riData}: ${-this.diasAte(it30) > 30 ? 'mais de 30 dias – pedir atualizada' : `${30 + this.diasAte(it30)} dia(s) de validade`}`);
+    }
+    if (ce.casExp) { const d = this.data(ce.casExp); const sobra = d ? 90 + this.diasAte(d) : null; add(sobra === null ? 'falta' : sobra < 0 ? 'falta' : sobra <= 7 ? 'aviso' : 'ok', sobra === null ? 'Certidão de casamento: data inválida' : sobra < 0 ? 'Certidão de casamento com mais de 90 dias' : `Certidão de casamento: ${sobra} dia(s) de validade`); }
+    add(ce.hash ? 'ok' : 'falta', ce.hash ? 'CNIB consultada (hash informado)' : 'Consultar a CNIB e anotar o hash');
+    const faltam = it.filter(x => x.st === 'falta').length, avisos = it.filter(x => x.st === 'aviso').length;
+    return { itens: it, faltam, avisos, nivel: faltam ? 'vermelho' : avisos ? 'amarelo' : 'verde' };
+  },
+  selo(r) {
+    if (r.situacao !== 'MINUTA' || ehProcuracao(r)) return '';
+    const c = this.checar(r);
+    return c.faltam ? `<span class="selo pendente">FALTAM ${c.faltam}</span>` : c.avisos ? `<span class="selo minuta">QUASE PRONTA</span>` : '<span class="selo pago">PRONTA PARA LAVRAR</span>';
+  },
+  html(r) {
+    const c = this.checar(r), ic = { ok: '✓', aviso: '!', falta: '✗' };
+    const tit = c.nivel === 'verde' ? 'Pronta para lavrar' : c.nivel === 'amarelo' ? 'Quase pronta – conferir os avisos' : `Faltam ${c.faltam} item(ns) para lavrar`;
+    return `<div class="pronta ${c.nivel}"><b>${tit}</b><ul>${c.itens.map(x => `<li class="p-${x.st}"><span>${ic[x.st]}</span> ${esc(x.txt)}</li>`).join('')}<li id="prMinuta" class="p-aviso"><span>…</span> Minuta na pasta 01 (conferindo)</li></ul></div>`;
+  },
+  // Minuta salva na pasta 01 (consulta o Drive; só no detalhe).
+  async minutaSalva(r, pastaDe) {
+    const li = $('prMinuta'); if (!li) return;
+    try {
+      const subs = (await Nuvem.listar(await pastaDe(r))).filter(f => f.pasta);
+      const p1 = subs.find(s => s.nome === SUBPASTAS[0]);
+      const n = p1 ? (await Nuvem.listar(p1.id)).filter(f => !f.pasta).length : 0;
+      li.className = n ? 'p-ok' : 'p-falta'; li.innerHTML = `<span>${n ? '✓' : '✗'}</span> ${n ? `Minuta salva na pasta 01 (${n} arquivo(s))` : 'Salvar a minuta na pasta 01 - MINUTA'}`;
+    } catch (e) { li.innerHTML = '<span>!</span> Minuta na pasta 01: não deu para conferir agora'; }
+  }
+};
+
 const Esc = {
   parceiros: [],   // [{nome, id}]
 
@@ -103,7 +167,7 @@ const Esc = {
     const recebido = r.situacao === 'LAVRADA' && r.emolumentos ? (r.recebido ? '<span class="selo pago">RECEBIDO</span>' : '<span class="selo pendente">A RECEBER</span>') : '';
     return `<div class="item" data-esc="${esc(r.id)}">
       <div><div class="t">${esc(r.nome)}</div>
-        <div class="s"><span class="selo ${r.situacao === 'LAVRADA' ? 'lavrada' : 'minuta'}">${r.situacao || '—'}</span> ${esc(r.parceiro)}${r.dataLavratura ? ' · ' + dataBR(r.dataLavratura) : ''}${r.selo ? ' · selo ' + esc(r.selo) : ''}${r.semPasta ? ' · <b style="color:var(--red)">pasta não encontrada</b>' : ''}</div></div>
+        <div class="s"><span class="selo ${r.situacao === 'LAVRADA' ? 'lavrada' : 'minuta'}">${r.situacao || '—'}</span> ${esc(r.parceiro)}${r.dataLavratura ? ' · ' + dataBR(r.dataLavratura) : ''}${r.selo ? ' · selo ' + esc(r.selo) : ''}${r.semPasta ? ' · <b style="color:var(--red)">pasta não encontrada</b>' : ''} ${Pronta.selo(r)}</div></div>
       <div class="v">${r.emolumentos ? 'R$ ' + brl(r.emolumentos) : ''}<div>${recebido}</div></div></div>`;
   },
 
@@ -187,6 +251,7 @@ const Esc = {
     const campo = (k, rot, tipo = 'text', extra = '') => `<div><label class="f">${rot}</label><input id="ed_${k}" type="${tipo}" value="${esc(tipo === 'text' && ['base', 'emolumentos', 'valorRecebido'].includes(k) ? (r[k] ? brl(r[k]) : '') : (r[k] || ''))}" ${extra}></div>`;
     abrirModal(r.nome, `
       <div class="hint" style="margin-bottom:6px"><span class="selo ${r.situacao === 'LAVRADA' ? 'lavrada' : 'minuta'}">${r.situacao}</span> ${esc(r.parceiro)} · <a href="${Nuvem.linkPasta(r.driveId)}" target="_blank" rel="noopener">abrir pasta no Drive</a></div>
+      ${r.situacao === 'MINUTA' && !ehProcuracao(r) ? Pronta.html(r) : ''}
       <div class="linha2">
         <div><label class="f">Natureza</label><select id="ed_natureza">${NATUREZAS.map(n => `<option ${n === r.natureza ? 'selected' : ''}>${n}</option>`).join('')}${NATUREZAS.includes(r.natureza) || !r.natureza ? '' : `<option selected>${esc(r.natureza)}</option>`}</select></div>
         ${campo('imovel', ehProcuracao(r) ? 'Tipo' : 'Imóvel')}
@@ -229,6 +294,7 @@ const Esc = {
         if (!await confirmar('Tirar da lista', 'Tirar esta escritura da lista do Notarius? A pasta no Drive não é apagada.')) return;
         await Reg.excluir('escrituras', id); fecharModal(); App.atualizarTudo();
       };
+      if (r.situacao === 'MINUTA' && !ehProcuracao(r) && !r.externo) Pronta.minutaSalva(r, x => this.pastaDe(x));
       if (r.externo) $('edDocs').innerHTML = '<div class="hint">Ato registrado sem pasta (lavrado fora das pastas dos parceiros). Serve para a conferência do livro e para as comunicações.</div>';
       else this.carregarDocs(r);
     });
@@ -246,13 +312,16 @@ const Esc = {
       <div class="acoes" style="margin:6px 0">${SITES_CERTIDOES.map(s => `<a class="btn" href="${s.url}" target="_blank" rel="noopener">${s.nome}</a>`).join('')}</div>
       ${ta('tj', 'Ações cíveis – TJPA')}${ta('tst', 'CNDT – TST')}${ta('trf', 'Cível – TRF1')}${ta('sefa', 'Dívida ativa tributária e não tributária – SEFA/PA (nº das duas)')}
       <div class="linha2"><div><label class="f" for="ed_c_cndPJ">Vendedor empresa: CND RFB/PGFN (nº e data)</label><input id="ed_c_cndPJ" type="text" value="${esc(ce.cndPJ || '')}"></div>
-      <div><label class="f" for="ed_c_casExp">Certidões de casamento expedidas em</label><input id="ed_c_casExp" type="text" placeholder="dd/mm/aaaa" value="${esc(ce.casExp || '')}"></div></div>`;
+      <div><label class="f" for="ed_c_casExp">Certidões de casamento expedidas em</label><input id="ed_c_casExp" type="text" placeholder="dd/mm/aaaa" value="${esc(ce.casExp || '')}"></div>
+      <div><label class="f" for="ed_c_riData">Inteiro teor da matrícula expedida em (vale 30 dias)</label><input id="ed_c_riData" type="text" placeholder="dd/mm/aaaa" value="${esc(ce.riData || '')}"></div>
+      <div><label class="f" for="ed_c_hash">CNIB – código(s) hash (um por linha)</label><textarea id="ed_c_hash" class="curto">${esc(ce.hash || '')}</textarea></div></div>
+      <div class="hint">Validade usada no aviso: CNDT 180 dias; TJPA 90; TRF1 30; SEFA 180. Se a certidão trouxer outro prazo, acrescente na linha: <b>nº | data | resultado | válida até</b>.</div>`;
   },
 
   async salvarDetalhe(id) {
     const r = await Reg.get('escrituras', id);
     const val = k => $('ed_' + k).value.trim();
-    if ($('ed_c_tj')) r.certidoes = { ...Object.fromEntries(['tj', 'tst', 'trf', 'sefa', 'cndPJ', 'casExp'].map(k => [k, $('ed_c_' + k).value.trim()])),
+    if ($('ed_c_tj')) r.certidoes = { ...Object.fromEntries(['tj', 'tst', 'trf', 'sefa', 'cndPJ', 'casExp', 'riData', 'hash'].map(k => [k, $('ed_c_' + k).value.trim()])),
       disp: Object.fromEntries(['tj', 'tst', 'trf', 'sefa'].map(k => [k, $('ed_d_' + k).checked])) };
     Object.assign(r, {
       natureza: val('natureza'), imovel: val('imovel'), outorgantes: val('outorgantes'), outorgados: val('outorgados'),

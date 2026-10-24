@@ -1092,7 +1092,14 @@ function blobMinutaWord() {
     .dir{text-align:right} .c{text-align:center} .corpo{text-indent:3.75cm} .red{color:#FF0000;font-weight:bold}
     .ass{text-align:center;margin-top:1cm;page-break-inside:avoid} p.data{margin-bottom:0} p.ementa{margin-bottom:18pt} .junto{page-break-after:avoid}`;
   const word = '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->';
-  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">${word}<style>${estilo}</style></head><body><div class="Folha">${$('mDoc').innerHTML.replace(/^<div class="timbre">[\s\S]*?<\/div><\/div><\/div>/, timbreHTML('word')).replace(/<table class="ato"[\s\S]*?<\/table>/, atoHTML('word'))}</div></body></html>`;
+  // O Word só lê UMA classe por elemento ("corpo junto" vira só "corpo") e não leva "manter com o próximo" de <div>:
+  // por isso o fim do texto, a data e as assinaturas vão como <p> com o estilo escrito no próprio elemento – assim as
+  // assinaturas nunca ficam sozinhas na última página quando a minuta é aberta direto no Word (regra do usuário).
+  const corpoWord = $('mDoc').innerHTML
+    .replace(/^<div class="timbre">[\s\S]*?<\/div><\/div><\/div>/, timbreHTML('word')).replace(/<table class="ato"[\s\S]*?<\/table>/, atoHTML('word'))
+    .replace(/<div class="ass( junto)?">([\s\S]*?)<\/div>/g, (_, j, x) => `<p class="ass" style="text-align:center;margin:1cm 0 0;line-height:normal;page-break-inside:avoid${j ? ';page-break-after:avoid' : ''}">${x}</p>`)
+    .replace(/<p class="([^"]*)\bjunto\b([^"]*)">/g, (_, a, b) => `<p class="${(a + b).trim()}" style="page-break-after:avoid${/\bdata\b/.test(a + b) ? ';margin-bottom:0' : ''}">`);
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">${word}<style>${estilo}</style></head><body><div class="Folha">${corpoWord}</div></body></html>`;
   return new Blob(['﻿', doc], { type: 'application/msword' });
 }
 
@@ -1115,7 +1122,7 @@ async function minutaDaEscritura(id) {
   $('m_imovel').value = e.rural ? 'rural' : 'urbano';
   // Certidões anotadas na escritura vão para a minuta (sem apagar o que já foi digitado aqui).
   const ce = e.certidoes || {};
-  Object.entries({ tj: 'm_certTJ', tst: 'm_certTST', trf: 'm_certTRF', sefa: 'm_certSEFA', cndPJ: 'm_cndPJ', casExp: 'm_casExp' })
+  Object.entries({ tj: 'm_certTJ', tst: 'm_certTST', trf: 'm_certTRF', sefa: 'm_certSEFA', cndPJ: 'm_cndPJ', casExp: 'm_casExp', riData: 'm_riData', hash: 'm_hash' })
     .forEach(([k, idc]) => { if (ce[k] && !v(idc)) $(idc).value = ce[k]; });
   Object.entries({ tj: 'm_dispTJ', tst: 'm_dispTST', trf: 'm_dispTRF', sefa: 'm_dispSEFA' }).forEach(([k, idc]) => { $(idc).checked = !!(ce.disp || {})[k]; });
   aoMudarModal();

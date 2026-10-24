@@ -344,6 +344,8 @@
           </div>
           <label class="f" for="m_ri">Ofício de Registro de Imóveis</label>
           <input id="m_ri" type="text" placeholder="Cartório do Único Ofício de Bujaru/PA">
+          <label class="f" for="m_riData">Certidão de inteiro teor expedida em (vale 30 dias – art. 259, III, do CNSNR)</label>
+          <input id="m_riData" type="text" placeholder="dd/mm/aaaa">
           <label class="f" for="m_onus">Ônus não cancelados (um por linha)</label>
           <textarea id="m_onus" placeholder="AV-8 – INDISPONIBILIDADE DE BENS"></textarea>
           <div class="checks">
@@ -360,13 +362,18 @@
             <label class="f" for="m_cadOrgao">Órgão expedidor</label>
             <input id="m_cadOrgao" type="text" value="Secretaria Municipal de Gestão Fazendária de Ananindeua/PA">
             <div class="hint">A sigla CIF é de Ananindeua; em outro município, ajuste o nome do cadastro.</div>
+            <label class="f" for="m_cib">CIB – Cadastro Imobiliário Brasileiro nº (IN RFB 2.275/2025)</label>
+            <input id="m_cib" type="text">
           </fieldset>
           <fieldset data-imovel="rural">
             <div class="linha2">
               <div><label class="f" for="m_ccir">CCIR nº</label><input id="m_ccir" type="text"></div>
               <div><label class="f" for="m_nirf">CIB/NIRF nº</label><input id="m_nirf" type="text"></div>
             </div>
-            <label class="f" for="m_car">CAR nº</label><input id="m_car" type="text">
+            <div class="linha2">
+              <div><label class="f" for="m_car">CAR nº</label><input id="m_car" type="text"></div>
+              <div><label class="f" for="m_itr">Certidão negativa do ITR nº</label><input id="m_itr" type="text"></div>
+            </div>
           </fieldset>
           <label class="f" for="m_venal">Valor venal / valor fiscal (R$)</label>
           <input id="m_venal" type="text" inputmode="decimal">
@@ -379,6 +386,33 @@
               <div><label class="f" for="m_pagData">Data do pagamento</label><input id="m_pagData" type="text" placeholder="dd/mm/aaaa"></div>
               <div><label class="f" for="m_pagForma">Forma de pagamento</label><input id="m_pagForma" type="text" placeholder="transferência PIX"></div>
             </div>
+            <label class="f" for="m_pagDetalhe">Dados do pagamento (art. 165-A do CNN)</label>
+            <textarea id="m_pagDetalhe" placeholder="da conta nº ..., agência ..., Banco ..., de titularidade de ..., para a conta nº ..., agência ..., Banco ..., de titularidade de ..., no valor de R$ ..., em .../.../... — espécie: local e data — cheque: nº, banco, conta de origem e de destino"></textarea>
+            <div class="checks"><label><input type="checkbox" id="m_pagRecusa"> As partes se recusaram a informar os dados do pagamento</label></div>
+          </fieldset>
+          <fieldset data-modal="cv dacao">
+            <h3>Certidões dos vendedores</h3>
+            <div class="hint">Uma linha por vendedor, na mesma ordem dos nomes: <b>nº | data | resultado</b> (ex.: 12345 | 20/10/2026 | NEGATIVA). O que faltar sai em vermelho.</div>
+            <div class="acoes" style="margin:6px 0">
+              <a class="btn" href="https://portal-certidao.tjpa.jus.br/" target="_blank" rel="noopener">TJPA – cíveis</a>
+              <a class="btn" href="https://cndt-certidao.tst.jus.br/inicio.faces" target="_blank" rel="noopener">TST – CNDT</a>
+              <a class="btn" href="https://sistemas.trf1.jus.br/certidao/" target="_blank" rel="noopener">TRF1 – cível</a>
+              <a class="btn" href="https://app.sefa.pa.gov.br/emissao-certidao/template.action" target="_blank" rel="noopener">SEFA/PA – dívida ativa</a>
+            </div>
+            <label class="f" for="m_certTJ">Ações cíveis – TJPA</label><label class="chk"><input type="checkbox" id="m_dispTJ"> Dispensada pelo comprador (sob responsabilidade dele)</label><textarea id="m_certTJ" class="curto"></textarea>
+            <label class="f" for="m_certTST">CNDT – TST</label><label class="chk"><input type="checkbox" id="m_dispTST"> Dispensada pelo comprador (sob responsabilidade dele)</label><textarea id="m_certTST" class="curto"></textarea>
+            <label class="f" for="m_certTRF">Cível – TRF1</label><label class="chk"><input type="checkbox" id="m_dispTRF"> Dispensada pelo comprador (sob responsabilidade dele)</label><textarea id="m_certTRF" class="curto"></textarea>
+            <label class="f" for="m_certSEFA">Dívida ativa tributária e não tributária – SEFA/PA (nº das duas)</label><label class="chk"><input type="checkbox" id="m_dispSEFA"> Dispensada pelo comprador (sob responsabilidade dele)</label><textarea id="m_certSEFA" class="curto" placeholder="111 e 222 | 20/10/2026 | NEGATIVAS"></textarea>
+            <label class="f" for="m_cndPJ">Vendedor empresa: CND conjunta RFB/PGFN (nº e data – art. 262 do CNSNR)</label><input id="m_cndPJ" type="text">
+            <label class="f" for="m_casExp">Certidões de casamento expedidas em (até 90 dias – art. 261 do CNSNR)</label><input id="m_casExp" type="text" placeholder="dd/mm/aaaa">
+          </fieldset>
+          <fieldset data-modal="cv dacao inventario divorcio">
+            <h3>Assinatura a rogo (só se alguém não sabe ou não pode assinar)</h3>
+            <div class="linha2">
+              <div><label class="f" for="m_rogoQuem">Quem não assina (nome)</label><input id="m_rogoQuem" type="text"></div>
+              <div><label class="f" for="m_rogoMotivo">Motivo</label><input id="m_rogoMotivo" type="text" placeholder="não sabe assinar"></div>
+            </div>
+            <label class="f" for="m_rogoPor">Quem assina a rogo (nome e qualificação)</label><textarea id="m_rogoPor" class="curto"></textarea>
           </fieldset>
           <fieldset data-modal="inventario divorcio">
             <label class="f" for="m_partilha">Partilha (como fica cada quinhão)</label>
@@ -414,6 +448,7 @@
             <button type="button" id="mCopiar">Copiar texto</button>
             <button type="button" onclick="window.print()">Imprimir</button>
           </div>
+          <div id="mAvisos" class="no-print"></div>
           <div class="doc" id="mDoc"></div>
         </div>
       </div>

@@ -86,6 +86,8 @@ label.f { display: block; font-weight: 600; margin: 12px 0 5px; font-size: 14px;
 select, input[type=text], input[type=number], input[type=date], input[type=month], input[type=search], textarea {
   width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
 textarea { min-height: 70px; resize: vertical; }
+textarea.curto { min-height: 44px; }
+label.chk { display: block; font-size: 13px; margin: 2px 0 4px; color: var(--muted, #555); }
 select:focus, input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 .valor { position: relative; }
 .valor span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); }

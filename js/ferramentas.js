@@ -1,4 +1,4 @@
-// Calculadora de emolumentos, checklist de documentos e minutas (modelos tradicional e revisado).
+﻿// Calculadora de emolumentos, checklist de documentos e minutas (modelos tradicional e revisado).
 
 function abrirSub(id) {
   document.querySelectorAll('#view-ferramentas .subtabs button').forEach(b => b.classList.toggle('ativo', b.dataset.sub === id));
@@ -550,12 +550,23 @@ function contexto() {
 }
 
 /* Itens comuns aos dois modelos */
+// Dados que o CNSNR-PA exige na qualificação e que faltam no texto digitado saem em vermelho (aprovado em 24/10/2026):
+// pacto antenupcial (art. 255, II) e dados da procuração com a data da certidão de inteiro teor (art. 255, IV).
+function pendenciasQual(q) {
+  const ex = [];
+  if ((/comunh[aã]o universal|separa[cç][aã]o (total|convencional|absoluta)|participa[cç][aã]o final/i.test(q) && !/pacto/i.test(q)) || (/pacto antenupcial/i.test(q) && !/livro/i.test(q)))
+    ex.push('[[pacto antenupcial: data, serventia, livro e folhas xxx]]');
+  if (/procurador|procuradora|representad[oa] por|\bP\/P\b/i.test(q) && !/certid[aã]o de inteiro teor|traslado/i.test(q))
+    ex.push('[[procuração: data, livro, folhas, serventia e data da certidão de inteiro teor, se não for o traslado xxx]]');
+  return ex.length ? ' (' + ex.join('; ') + ')' : '';
+}
+const temCNPJ = id => /CNPJ/i.test(v(id));
 function itQualificacao(c, G, base, lado) {
   const outorg = lado === 'A' ? w(G, 'OUTORGANTE', 'OUTORGANTE', 'OUTORGANTES', 'OUTORGANTES') : w(G, 'OUTORGADO', 'OUTORGADA', 'OUTORGADOS', 'OUTORGADAS');
-  const rot = nome(base, G);
+  const rot = nome(base, G), id = lado === 'A' ? 'm_aQual' : 'm_bQual';
   return {
     tt: `${outorg} / ${rot}`, tr: `${w(G, 'DO', 'DA', 'DOS', 'DAS')} ${outorg} ${rot}`,
-    x: `${F(lado === 'A' ? 'm_aQual' : 'm_bQual', 'qualificação completa')}, doravante ${w(G, 'denominado', 'denominada', 'denominados', 'denominadas')} **${rot}**.` + (c.trad ? ' Documentos arquivados em classificador próprio desta Serventia.' : '')
+    x: `${F(id, 'qualificação completa')}${pendenciasQual(v(id))}, doravante ${w(G, 'denominado', 'denominada', 'denominados', 'denominadas')} **${rot}**.` + (c.trad ? ' Documentos arquivados em classificador próprio desta Serventia.' : '')
   };
 }
 function itIdentidade(c) {
@@ -572,6 +583,7 @@ function itObjeto(c) {
 }
 function itTitulo(c) {
   const [G, base] = c.prop, ri = F('m_ri', 'Ofício de Registro de Imóveis');
+  const riD = F('m_riData', 'data de expedição da certidão de inteiro teor');
   const mat = negrito('Matrícula nº', v('m_matricula'), 'número da matrícula');
   const onus = linhas('m_onus'), L = i => String.fromCharCode((c.trad ? 65 : 97) + i);
   let obs = '';
@@ -582,12 +594,12 @@ function itTitulo(c) {
       : ' As partes foram expressamente cientificadas da existência dessas ordens de indisponibilidade, circunstância que consigno neste ato, nos termos do parágrafo único do art. 320-F do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023), e estão cientes de que o registro desta escritura depende do prévio cancelamento dessas indisponibilidades.';
   }
   if (c.trad) return { k: 'titulo', tt: 'TÍTULO AQUISITIVO E DISPONIBILIDADE DO BEM',
-    x: `O imóvel qualificado acima foi havido nos termos descritos da Certidão de Inteiro Teor expedida pelo ${ri}, devidamente registrado sob a ${mat}, Livro 02 – Registro Geral` +
+    x: `O imóvel qualificado acima foi havido nos termos descritos da Certidão de Inteiro Teor expedida pelo ${ri} em ${riD}, devidamente registrado sob a ${mat}, Livro 02 – Registro Geral` +
       (onus.length ? '. Documento arquivado em classificador próprio desta Serventia.' + obs
         : ', estando livre e desimpedido de quaisquer ônus reais, pessoais e reipersecutórios. Documento arquivado em classificador próprio desta Serventia.') };
   const ser = c.m === 'inventario' ? vb(G, 'era', 'eram') : vb(G, 'é', 'são');
   return { k: 'titulo', tr: 'DO TÍTULO AQUISITIVO E DA DISPONIBILIDADE',
-    x: `${cap(art.o(G))} ${R([G, base])} ${ser} ${w(G, 'proprietário', 'proprietária', 'proprietários', 'proprietárias')} do imóvel, registrado sob a ${mat}, Livro 2 – Registro Geral, do ${ri}, conforme certidão de inteiro teor apresentada.` +
+    x: `${cap(art.o(G))} ${R([G, base])} ${ser} ${w(G, 'proprietário', 'proprietária', 'proprietários', 'proprietárias')} do imóvel, registrado sob a ${mat}, Livro 2 – Registro Geral, do ${ri}, conforme certidão de inteiro teor expedida em ${riD}.` +
       (onus.length ? obs : ' O imóvel encontra-se livre e desembaraçado de quaisquer ônus reais e de ações reais ou pessoais reipersecutórias.') };
 }
 function itCadastro(c) {
@@ -595,11 +607,13 @@ function itCadastro(c) {
   if (!c.rural) {
     const sig = F('m_cadSigla', 'sigla do cadastro'), num = F('m_cadNum', 'número do cadastro'), mun = F('m_municipio', 'município/UF');
     const doc = F('m_cadNome', 'nome do documento fiscal'), org = F('m_cadOrgao', 'órgão expedidor');
+    // CIB obrigatório nos atos notariais (IN RFB 2.275/2025, art. 5º; LC 214/2025, art. 266) – aprovado em 24/10/2026.
+    const cib = `no **Cadastro Imobiliário Brasileiro – CIB** sob o nº ${F('m_cib', 'número do CIB')}`;
     return c.trad
-      ? { tt: 'CADASTRO FISCAL', x: `O imóvel objeto desta Escritura está devidamente cadastrado junto a Prefeitura Municipal de ${mun}, sob o ${sig} nº ${num}, com o valor venal de ${venal}, conforme ${doc}, expedida pela ${org}. Documentos arquivados em classificador próprio desta Serventia.` }
-      : { tr: 'DO CADASTRO FISCAL', x: `O imóvel está cadastrado na Prefeitura Municipal de ${mun} sob o ${sig} nº ${num}, com valor venal de ${venal}, conforme ${doc} emitida pela ${org}.` };
+      ? { tt: 'CADASTRO FISCAL', x: `O imóvel objeto desta Escritura está devidamente cadastrado junto a Prefeitura Municipal de ${mun}, sob o ${sig} nº ${num}, e ${cib}, com o valor venal de ${venal}, conforme ${doc}, expedida pela ${org}. Documentos arquivados em classificador próprio desta Serventia.` }
+      : { tr: 'DO CADASTRO FISCAL', x: `O imóvel está cadastrado na Prefeitura Municipal de ${mun} sob o ${sig} nº ${num} e ${cib}, com valor venal de ${venal}, conforme ${doc} emitida pela ${org}.` };
   }
-  const t = `no Instituto Nacional de Colonização e Reforma Agrária – INCRA, conforme **Certificado de Cadastro de Imóvel Rural – CCIR** nº ${F('m_ccir', 'número do CCIR')}, quitado; na Receita Federal do Brasil, sob o **Cadastro Imobiliário Brasileiro – CIB/NIRF** nº ${F('m_nirf', 'número do CIB/NIRF')}, com **Certidão Negativa de Débitos relativos ao Imposto sobre a Propriedade Territorial Rural – ITR**, nos termos do art. 22, §§ 1º e 2º, da Lei nº 4.947/1966 e do art. 21 da Lei nº 9.393/1996; e no **Cadastro Ambiental Rural – CAR** sob o nº ${F('m_car', 'número do CAR')}, nos termos da Lei nº 12.651/2012, com valor atribuído de ${venal}`;
+  const t = `no Instituto Nacional de Colonização e Reforma Agrária – INCRA, conforme **Certificado de Cadastro de Imóvel Rural – CCIR** nº ${F('m_ccir', 'número do CCIR')}, quitado; na Receita Federal do Brasil, sob o **Cadastro Imobiliário Brasileiro – CIB/NIRF** nº ${F('m_nirf', 'número do CIB/NIRF')}, com **Certidão Negativa de Débitos relativos ao Imposto sobre a Propriedade Territorial Rural – ITR** nº ${F('m_itr', 'número da certidão negativa do ITR')}, nos termos do art. 22, §§ 1º e 2º, da Lei nº 4.947/1966 e do art. 21 da Lei nº 9.393/1996; e no **Cadastro Ambiental Rural – CAR** sob o nº ${F('m_car', 'número do CAR')}, nos termos da Lei nº 12.651/2012, com valor atribuído de ${venal}`;
   return c.trad
     ? { tt: 'CADASTRO RURAL', x: `O imóvel rural objeto desta Escritura está devidamente cadastrado ${t}. Documentos arquivados em classificador próprio desta Serventia.` }
     : { tr: 'DO CADASTRO RURAL', x: `O imóvel rural está cadastrado ${t}.` };
@@ -614,10 +628,62 @@ function itImposto(c) {
     ? { tt, x: `Foi devidamente recolhido aos cofres da municipalidade competente o Imposto de Transmissão de Bens Imóveis – ITBI, no valor de ${val}, com base de cálculo no valor de ${bc}, nos termos dos seguintes documentos: ${docs}. Documentos arquivados em classificador próprio desta Serventia.` }
     : { tr, x: `Foi recolhido o Imposto de Transmissão de Bens Imóveis – ITBI, no valor de ${val}, sobre a base de cálculo de ${bc}, conforme ${docs}.` };
 }
-function itCertidoesDispensa(c) {
-  const [G, base] = c.adq;
-  if (c.trad) return { tt: 'CERTIDÕES E DOCUMENTOS', x: 'Nos termos da Lei nº 7.433/85, do Decreto Regulamentador nº 93.240/86 e do Código de Normas dos Serviços Notariais e de Registro do Estado do Pará – CNSNR, as **PARTES** apresentaram as certidões e documentos necessários à lavratura do presente ato, dispensando, em comum acordo, as Certidões de Feitos Ajuizados da Justiça Estadual, Justiça Federal e Justiça do Trabalho, nos termos do inc. IV do art. 259 do CNSNR, dispensando a Certidão Negativa de Débitos Trabalhistas, com plena ciência da possibilidade de sua obtenção, nos termos do inc. V do art. 259 do CNSNR, bem como dispensam todas as Certidões de Natureza Fiscal, nos termos do §2º, do art. 1º do Decreto Regulamentador nº 93.240/86 e do §1º do art. 259 do CNSNR, observado, ainda, o disposto no §2º do art. 54 da Lei nº 13.097/2015, incluído pela Lei nº 14.382/2022, estando ciente dos riscos inerentes que venham a recair sobre o imóvel, respondendo, nos termos da lei, pelo pagamento dos débitos fiscais existentes.' };
-  return { tr: 'DAS CERTIDÕES', x: `As partes apresentaram os documentos exigidos pela Lei nº 7.433/1985, pelo Decreto nº 93.240/1986 e pelo Código de Normas dos Serviços Notariais e de Registro do Estado do Pará – CNSNR. ${cap(art.o(G))} ${R([G, base])}, ${vb(G, 'ciente', 'cientes')} dos riscos, ${vb(G, 'dispensa', 'dispensam')}: **a)** as certidões de feitos ajuizados da Justiça Estadual, da Justiça Federal e da Justiça do Trabalho, com fundamento no art. 259, IV, do CNSNR e no art. 54, § 2º, da Lei nº 13.097/2015, incluído pela Lei nº 14.382/2022; **b)** a Certidão Negativa de Débitos Trabalhistas, após ser ${w(G, 'informado', 'informada', 'informados', 'informadas')} da possibilidade de obtê-la, com fundamento no art. 259, V, do CNSNR; e **c)** as certidões fiscais, com fundamento no art. 1º, § 2º, do Decreto nº 93.240/1986 e no art. 259, § 1º, do CNSNR, hipótese em que ${vb(G, 'responde', 'respondem')}, na forma da lei, pelos débitos fiscais porventura existentes.` };
+// Certidões APRESENTADAS em nome de cada alienante (aprovado pelo usuário em 24/10/2026, segurança jurídica): ações
+// cíveis do TJPA, CNDT do TST, cível do TRF1 e dívida ativa tributária e não tributária da SEFA/PA. As demais seguem
+// dispensadas pelo adquirente, "em destaque" (art. 259, IV, do CNSNR). Cada campo: uma linha por alienante, na ordem
+// dos nomes, "nº | data | resultado"; o que faltar sai em vermelho.
+const SITES_CERTIDOES = [
+  { nome: 'TJPA – cíveis', url: 'https://portal-certidao.tjpa.jus.br/' },
+  { nome: 'TST – CNDT', url: 'https://cndt-certidao.tst.jus.br/inicio.faces' },
+  { nome: 'TRF1 – cível', url: 'https://sistemas.trf1.jus.br/certidao/' },
+  { nome: 'SEFA/PA – dívida ativa', url: 'https://app.sefa.pa.gov.br/emissao-certidao/template.action' }
+];
+// Cada certidão pode ser APRESENTADA (dados em "nº | data | resultado", uma linha por alienante) ou DISPENSADA pelo
+// adquirente, sob sua responsabilidade (pedido do usuário, 24/10/2026); a dispensa vai para o parágrafo "em destaque".
+const CERTIDOES_VENDEDOR = [
+  { id: 'm_certTJ', disp: 'm_dispTJ', trad: '**Certidão de Ações Cíveis**, expedida pelo Tribunal de Justiça do Estado do Pará – TJPA', rev: 'certidão de ações cíveis do Tribunal de Justiça do Estado do Pará – TJPA' },
+  { id: 'm_certTST', disp: 'm_dispTST', trad: '**Certidão Negativa de Débitos Trabalhistas – CNDT**, expedida pelo Tribunal Superior do Trabalho – TST, nos termos do inc. V do art. 259 do CNSNR', rev: 'Certidão Negativa de Débitos Trabalhistas – CNDT, do Tribunal Superior do Trabalho (art. 259, V, do CNSNR)' },
+  { id: 'm_certTRF', disp: 'm_dispTRF', trad: '**Certidão de Distribuição Cível da Justiça Federal**, expedida pelo Tribunal Regional Federal da 1ª Região – TRF1', rev: 'certidão de distribuição cível do Tribunal Regional Federal da 1ª Região – TRF1' },
+  { id: 'm_certSEFA', disp: 'm_dispSEFA', pl: true, trad: '**Certidões de Dívida Ativa Tributária e Não Tributária**, expedidas pela Secretaria de Estado da Fazenda do Pará – SEFA/PA', rev: 'certidões de dívida ativa tributária e não tributária da Secretaria de Estado da Fazenda do Pará – SEFA/PA' }
+];
+const certDispensada = ct => !!($(ct.disp) && $(ct.disp).checked);
+function itCertidoes(c) {
+  const [GA, baseA] = c.prop, [G, base] = c.adq, trad = c.trad;
+  const pessoas = GA.pessoas.length ? GA.pessoas : [{ nome: '' }];
+  let positiva = false;
+  const L = i => String.fromCharCode((trad ? 65 : 97) + i);
+  const blocos = CERTIDOES_VENDEDOR.filter(ct => !certDispensada(ct)).map(ct => {
+    const lns = linhas(ct.id);
+    const itens = pessoas.map((p, i) => {
+      const [num, data, res] = (lns[i] || '').split('|').map(s => (s || '').trim());
+      const N = num || '[[nº da certidão xxx]]', D = data || '[[data de emissão xxx]]', Rs = res ? res.toUpperCase() : '[[resultado xxx]]';
+      if (/POSITIV/.test(Rs) && !/EFEITO/.test(Rs)) positiva = true;
+      const nomeP = p.nome ? `**${p.nome.toUpperCase()}**` : '[[nome xxx]]';
+      return trad
+        ? `${pessoas.length > 1 ? (i + 1) + ') ' : ''}${nomeP} – ${ct.pl ? 'nºs' : 'nº'} ${N}, ${ct.pl ? 'emitidas' : 'emitida'} em ${D}, com resultado ${Rs}`
+        : `${pessoas.length > 1 ? nomeP + ': ' : ''}${ct.pl ? 'nºs' : 'nº'} ${N}, de ${D}, ${Rs}`;
+    });
+    return trad ? `${ct.trad}: ${itens.join('; ')}` : `${ct.rev}${pessoas.length > 1 ? ' – ' : ' '}${itens.join('; ')}`;
+  });
+  // Empresa alienante: CND conjunta RFB/PGFN, que abrange as contribuições previdenciárias (art. 262, I e II, do CNSNR).
+  if ((c.m === 'cv' || c.m === 'dacao') && temCNPJ('m_aQual')) blocos.push(trad
+    ? `**Certidão Negativa de Débitos relativos aos Tributos Federais e à Dívida Ativa da União**, expedida conjuntamente pela Receita Federal do Brasil e pela Procuradoria-Geral da Fazenda Nacional, abrangendo as contribuições previdenciárias, em nome da pessoa jurídica ${art.do(GA)} ${R([GA, baseA])}: ${F('m_cndPJ', 'nº e data da CND conjunta RFB/PGFN')}, nos termos do art. 262, I e II, do CNSNR`
+    : `certidão negativa de débitos relativos aos tributos federais e à dívida ativa da União, conjunta da Receita Federal do Brasil e da Procuradoria-Geral da Fazenda Nacional, que abrange as contribuições previdenciárias, em nome da pessoa jurídica alienante: ${F('m_cndPJ', 'nº e data da CND conjunta RFB/PGFN')} (art. 262, I e II, do CNSNR)`);
+  const ciencia = positiva ? (trad
+    ? `. O teor das certidões com resultado positivo foi lido e explicado às **PARTES**, declarando ${art.o(G)} ${R([G, base])} ter ciência dos riscos e prosseguir com a aquisição`
+    : `. O teor das certidões positivas foi lido e explicado às partes, e ${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')} ciência dos riscos e ${vb(G, 'prossegue', 'prosseguem')} com a aquisição`) : '';
+  // Dispensa: a certidão dispensada NÃO é nomeada (pedido do usuário, 24/10/2026); uma frase geral dispensa as demais,
+  // com a ciência da possibilidade de obtê-las (exigida para a CNDT, art. 259, V) e a legislação da dispensa, em destaque.
+  const demais = blocos.length ? 'das demais certidões' : 'das certidões de feitos ajuizados e de natureza fiscal';
+  const lista = arr => arr.map((t, i) => `**${L(i)})** ${t}`).join('; ');
+  const quem = `${art.do(GA)} ${R([GA, baseA])}`;
+  const DISP = `**${vb(G, 'DISPENSA', 'DISPENSAM')} EXPRESSAMENTE**`;
+  if (trad) {
+    const apres = blocos.length ? ` e, para maior segurança jurídica do negócio, nos termos dos §§ 3º e 5º do art. 259 do CNSNR, foram apresentadas, em nome ${quem}, as seguintes certidões, arquivadas em classificador próprio desta Serventia: ${lista(blocos)}${ciencia}` : '';
+    return { tt: 'CERTIDÕES E DOCUMENTOS', x: `Nos termos da Lei nº 7.433/85, do Decreto Regulamentador nº 93.240/86 e do Código de Normas dos Serviços Notariais e de Registro do Estado do Pará – CNSNR, as **PARTES** apresentaram as certidões e documentos necessários à lavratura do presente ato${apres}. ${cap(art.o(G))} ${R([G, base])}, ${vb(G, 'ciente', 'cientes')} da possibilidade de sua obtenção e dos riscos inerentes, ${DISP}, sob sua exclusiva responsabilidade, a apresentação ${demais}, nos termos dos incs. IV e V e do § 1º do art. 259 do CNSNR e do § 2º do art. 1º do Decreto Regulamentador nº 93.240/86, observado, ainda, o disposto no § 2º do art. 54 da Lei nº 13.097/2015, incluído pela Lei nº 14.382/2022, respondendo, nos termos da lei, pelo pagamento dos débitos fiscais existentes.` };
+  }
+  const apres = blocos.length ? ` Para maior segurança do negócio (art. 259, §§ 3º e 5º, do CNSNR), foram apresentadas, em nome ${quem}, e arquivadas nesta Serventia: ${lista(blocos)}${ciencia}.` : '';
+  return { tr: 'DAS CERTIDÕES', x: `As partes apresentaram os documentos exigidos pela Lei nº 7.433/1985, pelo Decreto nº 93.240/1986 e pelo Código de Normas dos Serviços Notariais e de Registro do Estado do Pará – CNSNR.${apres} ${cap(art.o(G))} ${R([G, base])}, ${vb(G, 'ciente', 'cientes')} da possibilidade de sua obtenção e dos riscos, ${DISP}, sob sua exclusiva responsabilidade, a apresentação ${demais}, com fundamento no art. 259, IV, V e § 1º, do CNSNR e no art. 1º, § 2º, do Decreto nº 93.240/1986, observado o art. 54, § 2º, da Lei nº 13.097/2015, incluído pela Lei nº 14.382/2022, hipótese em que ${vb(G, 'responde', 'respondem')}, na forma da lei, pelos débitos fiscais porventura existentes.` };
 }
 function itLGPD(c) {
   return c.trad
@@ -634,6 +700,12 @@ function itDeclaracoes(c, primeira) {
     ? 'as **PARTES** declaram que não são pessoas expostas politicamente, atualmente ou nos últimos 05 (cinco) anos, não são familiares de pessoas expostas politicamente, bem como não são colaboradoras estreitas de pessoas expostas politicamente, declarando, ainda, para todos os fins de direito que, os dados constantes desta escritura são **VERDADEIROS**, ciente que quaisquer inconsistências podem trazer as sanções expostas na lei, nos termos do art. 145, §6º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023)'
     : 'as partes declaram que não são, nem foram nos últimos cinco anos, pessoas expostas politicamente, e que não são familiares nem estreitos colaboradores de pessoas nessa condição, nos termos do art. 145, § 6º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023)');
   if ($('m_cond').checked) lst.push(`${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')}, para fins de prova de quitação, que inexistem débitos condominiais ${c.trad ? 'incidentes sobre o referido imóvel, nos termos do §2º, do art. 2º, da Lei 7.433/85' : 'relativos ao imóvel (art. 2º, § 2º, da Lei nº 7.433/1985)'}`);
+  // Aprovados em 24/10/2026: alienante pessoa física declara que não é empregador (art. 262, I, do CNSNR) e quem se
+  // declarou casado ou divorciado confirma que a certidão (até 90 dias) segue inalterada (art. 261, parágrafo único).
+  if ((c.m === 'cv' || c.m === 'dacao') && !temCNPJ('m_aQual'))
+    lst.push(`${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')}, sob as penas da lei, que não ${vb(G, 'é', 'são')} ${w(G, 'empregador nem contribuinte individual empregador', 'empregadora nem contribuinte individual empregadora', 'empregadores nem contribuintes individuais empregadores', 'empregadoras nem contribuintes individuais empregadoras')}, ficando dispensada a apresentação de certidão negativa de débito para com o INSS, nos termos do art. 262, I, do CNSNR`);
+  if (c.m !== 'divorcio' && /\b(casad[oa]s?|divorciad[oa]s?|separad[oa]s? judicialmente)\b/i.test(v('m_aQual') + ' ' + (c.B ? v('m_bQual') : '')))
+    lst.push(`as **PARTES** casadas, divorciadas ou separadas declaram, sob as penas da lei, que o conteúdo das certidões de casamento apresentadas, expedidas em ${F('m_casExp', 'data de expedição da certidão de casamento')}, há no máximo 90 (noventa) dias, permanece inalterado, nos termos do parágrafo único do art. 261 do CNSNR`);
   if (c.rural) lst.push('as **PARTES** declaram ciência de que o registro de imóvel rural pode depender de georreferenciamento certificado pelo INCRA, nos termos do art. 176, §§ 3º e 4º, da Lei nº 6.015/1973 e do Decreto nº 4.449/2002');
   lst.push(c.trad
     ? 'as **PARTES** afirmam sob responsabilidade civil e criminal que os fatos e declarações prestadas são a exata expressão da verdade e que aceitam esta escritura em todos os seus termos, por se acharem de inteiro e pleno acordo com o ajustado e contratado entre si, ressalvando eventuais erros, omissões ou direito de terceiros e, por conseguinte, eximindo esta serventia de quaisquer responsabilidades oriundas em razão dessas declarações'
@@ -661,17 +733,23 @@ function itAdvogado(artigo) {
 function itensCompraVenda(c) {
   const { A, B } = c, V = R([A, c.rA]), C = R([B, c.rB]);
   const valor = valorB('m_valor', 'preço'), pd = F('m_pagData', 'data do pagamento'), pf = F('m_pagForma', 'forma de pagamento');
+  // Meio e forma de pagamento detalhados (art. 165-A do CNN, Prov. CNJ 161/2024) – aprovado em 24/10/2026.
+  const recusa = $('m_pagRecusa').checked;
+  const pdet = recusa ? '' : ', ' + (v('m_pagDetalhe') || '[[dados do pagamento: contas de origem e de destino, titulares, datas e valores; espécie: local e data; cheque: números e contas (art. 165-A do CNN) xxx]]');
+  const txtRecusa = !recusa ? '' : c.trad
+    ? ' As **PARTES** recusaram-se a fornecer os dados do meio de pagamento, recusa que consigno nos termos do § 3º do art. 165-A do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023).'
+    : ' As partes recusaram-se a fornecer os dados do meio de pagamento, o que consigno nos termos do art. 165-A, § 3º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial.';
   const vontade = { tt: 'VONTADE DAS PARTES', x: `Então, pelas **PARTES**, no uso da prerrogativa de livre escolha do Tabelionato de Notas, nos termos do art. 8º, da Lei 8.935/94, bem como nos termos dos artigos 481, 1.228 e seguintes do Código Civil, formalizam juridicamente a sua vontade, nos seguintes termos: **A)** ${cap(art.pelo(A))} ${V} me foi dito que, por ${vb(A, 'ser', 'serem')} ${w(A, 'legítimo proprietário', 'legítima proprietária', 'legítimos proprietários', 'legítimas proprietárias')} do imóvel a seguir descrito, a justo título, é de seu interesse a venda ${art.ao(B)} ${C} nos preços e condições estabelecidas nesta Escritura Pública. **B)** ${cap(art.pelo(B))} ${C} me foi dito que é de seu interesse a aquisição do referido imóvel, nas mesmas condições estabelecidas nesta Escritura.` };
   const preco = c.trad
-    ? { tt: 'PREÇO E FORMA DE PAGAMENTO', x: `Foi declarado pelas **PARTES** que o valor da compra e venda relativa ao imóvel é de ${valor}. O negócio jurídico, perfeito e realizado, foi pago integralmente ${art.pelo(B)} ${C}, em ${pd}, à vista, em moeda corrente do País, por intermédio de ${pf}, quantia esta que ${art.o(A)} ${V} ${vb(A, 'declara', 'declaram')} receber integralmente, pelo que ${vb(A, 'dá', 'dão')} plena, geral e irrevogável quitação do preço ajustado para a presente negociação, considerando pago e satisfeito por si e seus sucessores a qualquer título.` }
-    : { tr: 'DO PREÇO E DA QUITAÇÃO', x: `O preço da compra e venda é de ${valor}, pago integralmente ${art.pelo(B)} ${C} em ${pd}, à vista, em moeda corrente nacional, por meio de ${pf}. ${cap(art.o(A))} ${V} ${vb(A, 'declara', 'declaram')} ter recebido a totalidade do preço e ${vb(A, 'dá', 'dão')} ${art.ao(B)} ${C} plena, geral e irrevogável quitação, por si e por seus sucessores.` };
+    ? { tt: 'PREÇO E FORMA DE PAGAMENTO', x: `Foi declarado pelas **PARTES** que o valor da compra e venda relativa ao imóvel é de ${valor}. O negócio jurídico, perfeito e realizado, foi pago integralmente ${art.pelo(B)} ${C}, em ${pd}, à vista, em moeda corrente do País, por intermédio de ${pf}${pdet}, quantia esta que ${art.o(A)} ${V} ${vb(A, 'declara', 'declaram')} receber integralmente, pelo que ${vb(A, 'dá', 'dão')} plena, geral e irrevogável quitação do preço ajustado para a presente negociação, considerando pago e satisfeito por si e seus sucessores a qualquer título.${txtRecusa}` }
+    : { tr: 'DO PREÇO E DA QUITAÇÃO', x: `O preço da compra e venda é de ${valor}, pago integralmente ${art.pelo(B)} ${C} em ${pd}, à vista, em moeda corrente nacional, por meio de ${pf}${pdet}. ${cap(art.o(A))} ${V} ${vb(A, 'declara', 'declaram')} ter recebido a totalidade do preço e ${vb(A, 'dá', 'dão')} ${art.ao(B)} ${C} plena, geral e irrevogável quitação, por si e por seus sucessores.${txtRecusa}` };
   const venda = c.trad
     ? { tt: 'COMPRA E VENDA E DA GARANTIA PELOS RISCOS DE EVICÇÃO DE DIREITO', x: `**A)** E assim, ${art.o(A)} ${V}, por ${vb(A, 'receber', 'receberem')} integralmente o preço ajustado pela presente escritura e na melhor forma de direito, ${vb(A, 'vende e transfere', 'vendem e transferem')} ${art.ao(B)} ${C} o imóvel acima descrito, ao tempo em que ${vb(A, 'transfere', 'transferem')} todos os direitos de ações, jus, domínio e posse sobre ele, por intermédio da cláusula **CONSTITUTI**, garantindo a faculdade de usar, gozar, dispor e reaver o imóvel, de forma incontestável e efetiva, como proprietário e legítimo possuidor, nos termos do art. 1.228 do Código Civil; **B)** ${cap(art.o(A))} ${V} se ${vb(A, 'compromete', 'comprometem')} a garantir como firme e boa a presente compra e venda, bem como a responder, a todo tempo e na forma da Lei, pelos riscos de evicção de direito.` }
     : { tr: 'DA COMPRA E VENDA', x: `No exercício da livre escolha do tabelião, assegurada pelo art. 8º da Lei nº 8.935/1994, e nos termos dos arts. 481 e seguintes do Código Civil, ${art.o(A)} ${V} ${vb(A, 'vende', 'vendem')} ${art.ao(B)} ${C} o imóvel descrito no item {{objeto}} e ${vb(B, 'lhe', 'lhes')} ${vb(A, 'transmite', 'transmitem')}, desde já, por força desta escritura e da cláusula **CONSTITUTI**, o domínio, a posse, os direitos e as ações que sobre ele ${vb(A, 'exercia', 'exerciam')}, para que ${art.o(B)} ${C} o ${vb(B, 'use, goze, disponha e reivindique', 'usem, gozem, disponham e reivindiquem')} como seu, na forma do art. 1.228 do Código Civil. ${cap(art.o(B))} ${C} ${vb(B, 'aceita', 'aceitam')} a venda nos termos aqui estabelecidos. ${cap(art.o(A))} ${V} ${vb(A, 'obriga-se', 'obrigam-se')} a fazer esta venda sempre boa, firme e valiosa e a responder pela evicção, na forma da lei.` };
   const partes = [itQualificacao(c, A, c.rA, 'A'), itQualificacao(c, B, c.rB, 'B'), itIdentidade(c)];
   return c.trad
-    ? [...partes, vontade, itObjeto(c), itTitulo(c), itCadastro(c), preco, itImposto(c), venda, itCertidoesDispensa(c), itLGPD(c), itDeclaracoes(c), itConsultas(c), itRegistro(c)]
-    : [...partes, itObjeto(c), itTitulo(c), itCadastro(c), preco, venda, itImposto(c), itCertidoesDispensa(c), itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c)];
+    ? [...partes, vontade, itObjeto(c), itTitulo(c), itCadastro(c), preco, itImposto(c), venda, itCertidoes(c), itLGPD(c), itDeclaracoes(c), itConsultas(c), itRegistro(c)]
+    : [...partes, itObjeto(c), itTitulo(c), itCadastro(c), preco, venda, itImposto(c), itCertidoes(c), itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c)];
 }
 
 function itensDacao(c) {
@@ -686,8 +764,8 @@ function itensDacao(c) {
     : { tr: 'DA DAÇÃO EM PAGAMENTO', x: `No exercício da livre escolha do tabelião, assegurada pelo art. 8º da Lei nº 8.935/1994, e nos termos dos arts. 356 a 359 do Código Civil, ${art.o(A)} ${D} ${vb(A, 'dá', 'dão')} ${art.ao(B)} ${Cr}, em pagamento da dívida descrita no item {{divida}}, o imóvel descrito no item {{objeto}} e ${vb(B, 'lhe', 'lhes')} ${vb(A, 'transmite', 'transmitem')}, desde já, por força desta escritura e da cláusula **CONSTITUTI**, o domínio, a posse, os direitos e as ações que sobre ele ${vb(A, 'exercia', 'exerciam')}. ${cap(art.o(B))} ${Cr} ${vb(B, 'aceita', 'aceitam')} o imóvel em substituição à prestação devida. ${evicto}, restabelece-se a obrigação primitiva e fica sem efeito a quitação dada, ressalvados os direitos de terceiros (art. 359 do Código Civil).` };
   const partes = [itQualificacao(c, A, c.rA, 'A'), itQualificacao(c, B, c.rB, 'B'), itIdentidade(c)];
   return c.trad
-    ? [...partes, vontade, divida, itObjeto(c), itTitulo(c), itCadastro(c), quitacao, itImposto(c), dacao, itCertidoesDispensa(c), itLGPD(c), itDeclaracoes(c), itConsultas(c), itRegistro(c)]
-    : [...partes, divida, itObjeto(c), itTitulo(c), itCadastro(c), quitacao, dacao, itImposto(c), itCertidoesDispensa(c), itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c)];
+    ? [...partes, vontade, divida, itObjeto(c), itTitulo(c), itCadastro(c), quitacao, itImposto(c), dacao, itCertidoes(c), itLGPD(c), itDeclaracoes(c), itConsultas(c), itRegistro(c)]
+    : [...partes, divida, itObjeto(c), itTitulo(c), itCadastro(c), quitacao, dacao, itImposto(c), itCertidoes(c), itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c)];
 }
 
 function itensInventario(c) {
@@ -821,6 +899,7 @@ function gerarProcuracao(c) {
   ass.push([ct.lavrador || 'NOME DE QUEM LAVRA', cargo]);
   const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
   $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('ementa', titulo) + fimMinuta(corpo, ct, ass);
+  mostrarAvisos([]);
 }
 
 // Corpo + local/data + assinaturas. Regras do usuário: assinaturas nunca sozinhas numa página (o fim do texto,
@@ -859,6 +938,14 @@ function gerarMinuta() {
     ? `Saibam quantos este público instrumento virem que, ${data}, ${ct.localTrad || '[[local da lavratura (distrito, comarca e município) xxx]]'}, em Cartório, perante mim, ${ct.lavrador ? `**${ct.lavrador} – ${cargo}**` : `${lav} – ${cargo}`}, compareceram:`
     : `Saibam todos quantos virem este público instrumento que, ${data}, ${ct.localRev || ct.localTrad || '[[local da lavratura xxx]]'}, em Cartório, perante mim, ${ct.cargoCurto || cargo}, compareceram as partes a seguir qualificadas.`;
   const selo = F('m_selo', 'número do selo');
+  // Assinatura a rogo (art. 215, § 2º, do CC; art. 255, §§ 1º a 3º, do CNSNR) – aprovado em 24/10/2026.
+  const rogoQuem = v('m_rogoQuem');
+  if (rogoQuem) {
+    const q = `**${rogoQuem.toUpperCase()}**`, motivo = F('m_rogoMotivo', 'motivo: não sabe ou não pode assinar'), por = F('m_rogoPor', 'nome e qualificação de quem assina a rogo');
+    itens.push({ tt: 'ASSINATURA A ROGO', tr: 'DA ASSINATURA A ROGO', x: c.trad
+      ? `Como ${q} ${motivo}, a seu pedido assina a seu rogo ${por}, pessoa de sua confiança e alheia à estrutura desta Serventia, nos termos do art. 215, § 2º, do Código Civil e do art. 255, §§ 1º a 3º, do CNSNR, sendo colhida a impressão digital do polegar direito de ${q}.`
+      : `Como ${q} ${motivo}, assina a seu rogo, a seu pedido, ${por}, pessoa de sua confiança e alheia à estrutura desta Serventia (art. 215, § 2º, do Código Civil; art. 255, §§ 1º a 3º, do CNSNR), e foi colhida a impressão digital do polegar direito de ${q}.` });
+  }
   const quemAssina = c.m === 'inventario' || c.m === 'divorcio'
     ? `os ${R([c.A, c.rA])}, o **ADVOGADO**`
     : `${art.o(c.A)} ${R([c.A, c.rA])}, ${art.o(c.B)} ${R([c.B, c.rB])}`;
@@ -872,7 +959,11 @@ function gerarMinuta() {
   corpo = corpo.replace(/\{\{(\w+)\}\}/g, (_, k) => ref[k] || `[[item ${k} xxx]]`);
 
   const ass = [];
-  const addGrupo = (G, base, qual) => G.pessoas.forEach(p => ass.push([p.nome.toUpperCase(), p.papel || cap(nome(base, { pl: false, g: generoPessoa(p.nome, v(qual), G.g) }).toLowerCase())]));
+  const papelDe = (p, base, qual, G) => p.papel || cap(nome(base, { pl: false, g: generoPessoa(p.nome, v(qual), G.g) }).toLowerCase());
+  const aRogo = p => rogoQuem && p.nome.trim().toUpperCase() === rogoQuem.trim().toUpperCase();
+  const addGrupo = (G, base, qual) => G.pessoas.forEach(p => ass.push(aRogo(p)
+    ? [`A ROGO DE ${p.nome.toUpperCase()}`, (v('m_rogoPor').replace(/\*\*/g, '').split(',')[0].trim().toUpperCase() || 'QUEM ASSINA A ROGO') + ' – ' + papelDe(p, base, qual, G)]
+    : [p.nome.toUpperCase(), papelDe(p, base, qual, G)]));
   addGrupo(c.A, c.rA, 'm_aQual');
   if (c.B) addGrupo(c.B, c.rB, 'm_bQual');
   if (c.m === 'inventario' || c.m === 'divorcio') ass.push([(v('m_adv').replace(/\*\*/g, '').split(',')[0].trim() || 'ADVOGADO').toUpperCase(), 'Advogado']);
@@ -880,6 +971,27 @@ function gerarMinuta() {
 
   const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
   $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('ementa', titulo) + fimMinuta(corpo, ct, ass);
+  mostrarAvisos(avisosMinuta(c));
+}
+
+// Avisos para quem lavra (não entram no texto): outorga do cônjuge (art. 256 do CNSNR), prazos das certidões.
+function avisosMinuta(c) {
+  const av = [], qa = v('m_aQual');
+  const iso = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''; };
+  const dias = de => { const d = iso(de), a = v('m_data') || hojeISO(); return d ? Math.round((new Date(a) - new Date(d)) / 864e5) : null; };
+  if ((c.m === 'cv' || c.m === 'dacao') && /\bcasad[oa]\b/i.test(qa) && c.A.pessoas.length === 1)
+    av.push('Alienante casado e o cônjuge não está entre os outorgantes: colher a outorga do cônjuge (art. 256 do CNSNR; CC, art. 1.647), salvo separação convencional de bens ou participação final com livre disposição.');
+  if ((c.m === 'cv' || c.m === 'dacao') && /uni[aã]o est[aá]vel|convivente|companheir[oa]/i.test(qa) && !/n[aã]o (vive|viver|conviver|convive)/i.test(qa))
+    av.push('Alienante em união estável: por cautela, colher a anuência do companheiro (comentário ao art. 256 do CNSNR).');
+  const dRi = dias(v('m_riData'));
+  if (dRi !== null && dRi > 30) av.push(`A certidão de inteiro teor tem ${dRi} dias: para a escritura, a eficácia é de 30 dias (art. 259, III, do CNSNR). Pedir certidão atualizada.`);
+  const dCas = dias(v('m_casExp'));
+  if (dCas !== null && dCas > 90) av.push(`A certidão de casamento tem ${dCas} dias: o limite é 90 dias (art. 261, parágrafo único, do CNSNR).`);
+  return av;
+}
+function mostrarAvisos(av) {
+  const box = $('mAvisos');
+  if (box) box.innerHTML = av.map(a => `<div class="aviso">${esc(a)}</div>`).join('');
 }
 
 function aoMudarModal() {
@@ -997,6 +1109,11 @@ async function minutaDaEscritura(id) {
   if (e.preco) $('m_valor').value = brl(e.preco);
   if (e.venal && !v('m_venal')) $('m_venal').value = brl(e.venal);
   $('m_imovel').value = e.rural ? 'rural' : 'urbano';
+  // Certidões anotadas na escritura vão para a minuta (sem apagar o que já foi digitado aqui).
+  const ce = e.certidoes || {};
+  Object.entries({ tj: 'm_certTJ', tst: 'm_certTST', trf: 'm_certTRF', sefa: 'm_certSEFA', cndPJ: 'm_cndPJ', casExp: 'm_casExp' })
+    .forEach(([k, idc]) => { if (ce[k] && !v(idc)) $(idc).value = ce[k]; });
+  Object.entries({ tj: 'm_dispTJ', tst: 'm_dispTST', trf: 'm_dispTRF', sefa: 'm_dispSEFA' }).forEach(([k, idc]) => { $(idc).checked = !!(ce.disp || {})[k]; });
   aoMudarModal();
 }
 

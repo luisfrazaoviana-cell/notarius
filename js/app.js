@@ -123,11 +123,16 @@ const App = {
     const compProx = dia <= 5 && !CFG.repassesPagos[chaveRepasse(mesAnt)] ? mesAnt : mes;
     const repProx = soma(lav.filter(e => mesDe(e.dataLavratura) === compProx), e => Ctl.repasse(e));
     const com = await Com.pendencias(), rec = await Rec.resumo();
+    // Semáforo das minutas (Pronta.checar em escrituras.js): prontas para lavrar e certidões vencidas/vencendo.
+    const conf = minutas.filter(e => !ehProcuracao(e)).map(e => Pronta.checar(e));
+    const prontas = conf.filter(c => c.nivel === 'verde').length;
+    const renovar = conf.reduce((n, c) => n + c.itens.filter(x => /VENCIDA|vence em|mais de 30 dias|mais de 90 dias/.test(x.txt)).length, 0);
     $('iniKpis').innerHTML = `
       <div class="kpi destaque"><small>Emolumentos de ${nomeMes(mes)}</small><b>R$ ${brl(soma(doMes, e => e.emolumentos))}</b><span>${doMes.length} lavrada(s)</span></div>
       <div class="kpi"><small>Próximo repasse (dia 5)</small><b>R$ ${brl(repProx)}</b><span>vence ${dataBR(mesSeguinte(compProx) + '-05')}</span></div>
       <div class="kpi"><small>A receber de clientes</small><b>R$ ${brl(soma(aReceber, e => e.emolumentos))}</b><span>${aReceber.length} escritura(s)</span></div>
-      <div class="kpi"><small>Minutas em andamento</small><b>${minutas.length}</b><span>${todas.length} atos no total</span></div>
+      <div class="kpi clic" data-ir="escrituras"><small>Minutas em andamento</small><b>${minutas.length}</b><span>${prontas} pronta(s) para lavrar</span></div>
+      ${renovar ? `<div class="kpi clic" data-ir="escrituras"><small>Certidões a renovar</small><b style="color:var(--red)">${renovar}</b><span>vencidas ou vencendo em 7 dias</span></div>` : ''}
       <div class="kpi clic" data-ir="receitas"><small>Orçamentos em aberto</small><b>R$ ${brl(rec.orcAberto)}</b><span>${rec.orcAbertoQtd} orçamento(s) não pago(s)</span></div>
       <div class="kpi clic" data-ir="receitas"><small>Meus honorários a receber</small><b>R$ ${brl(rec.honAberto)}</b><span>${rec.honAbertoQtd} ato(s)</span></div>
       <div class="kpi clic" data-ir="comunicacoes"><small>Comunicações pendentes</small><b>${com.qtd}</b><span>${com.prazo ? 'próximo prazo ' + dataBR(com.prazo) : 'em dia'}</span></div>`;

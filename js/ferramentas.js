@@ -474,7 +474,8 @@ function negritarNomes(texto) {
   const c = contexto();
   const nomes = [...(c.A?.pessoas || []), ...(c.B?.pessoas || []), ...(c.Fal?.pessoas || [])].map(p => (p.nome || '').trim()).filter(n => n.length >= 5);
   for (const n of nomes.sort((a, b) => b.length - a.length)) {
-    const re = new RegExp(`(?<![\\wÀ-ÿ*])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}(?![\\wÀ-ÿ*])`, 'gi');
+    // Nome entre aspas (“NOME”, nas certidões) fica sem negrito – pedido do usuário em 24/10/2026.
+    const re = new RegExp(`(?<![\\wÀ-ÿ*“])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}(?![\\wÀ-ÿ*])`, 'gi');
     texto = texto.replace(re, m => `**${m}**`);
   }
   return texto;
@@ -641,10 +642,10 @@ const SITES_CERTIDOES = [
 // Cada certidão pode ser APRESENTADA (dados em "nº | data | resultado", uma linha por alienante) ou DISPENSADA pelo
 // adquirente, sob sua responsabilidade (pedido do usuário, 24/10/2026); a dispensa vai para o parágrafo "em destaque".
 const CERTIDOES_VENDEDOR = [
-  { id: 'm_certTJ', disp: 'm_dispTJ', trad: '**Certidão de Ações Cíveis**, expedida pelo Tribunal de Justiça do Estado do Pará – TJPA', rev: 'certidão de ações cíveis do Tribunal de Justiça do Estado do Pará – TJPA' },
-  { id: 'm_certTST', disp: 'm_dispTST', trad: '**Certidão Negativa de Débitos Trabalhistas – CNDT**, expedida pelo Tribunal Superior do Trabalho – TST, nos termos do inc. V do art. 259 do CNSNR', rev: 'Certidão Negativa de Débitos Trabalhistas – CNDT, do Tribunal Superior do Trabalho (art. 259, V, do CNSNR)' },
-  { id: 'm_certTRF', disp: 'm_dispTRF', trad: '**Certidão de Distribuição Cível da Justiça Federal**, expedida pelo Tribunal Regional Federal da 1ª Região – TRF1', rev: 'certidão de distribuição cível do Tribunal Regional Federal da 1ª Região – TRF1' },
-  { id: 'm_certSEFA', disp: 'm_dispSEFA', pl: true, trad: '**Certidões de Dívida Ativa Tributária e Não Tributária**, expedidas pela Secretaria de Estado da Fazenda do Pará – SEFA/PA', rev: 'certidões de dívida ativa tributária e não tributária da Secretaria de Estado da Fazenda do Pará – SEFA/PA' }
+  { id: 'm_certTJ', disp: 'm_dispTJ', tit: 'CERTIDÃO DE AÇÕES CÍVEIS – TJPA', trad: '**Certidão de Ações Cíveis**, expedida pelo Tribunal de Justiça do Estado do Pará – TJPA', rev: 'certidão de ações cíveis do Tribunal de Justiça do Estado do Pará – TJPA' },
+  { id: 'm_certTST', disp: 'm_dispTST', tit: 'CERTIDÃO NEGATIVA DE DÉBITOS TRABALHISTAS – CNDT – TST', trad: '**Certidão Negativa de Débitos Trabalhistas – CNDT**, expedida pelo Tribunal Superior do Trabalho – TST, nos termos do inc. V do art. 259 do CNSNR', rev: 'Certidão Negativa de Débitos Trabalhistas – CNDT, do Tribunal Superior do Trabalho (art. 259, V, do CNSNR)' },
+  { id: 'm_certTRF', disp: 'm_dispTRF', tit: 'CERTIDÃO DE DISTRIBUIÇÃO CÍVEL – TRF1', trad: '**Certidão de Distribuição Cível da Justiça Federal**, expedida pelo Tribunal Regional Federal da 1ª Região – TRF1', rev: 'certidão de distribuição cível do Tribunal Regional Federal da 1ª Região – TRF1' },
+  { id: 'm_certSEFA', disp: 'm_dispSEFA', pl: true, tit: 'CERTIDÕES DE DÍVIDA ATIVA TRIBUTÁRIA E NÃO TRIBUTÁRIA – SEFA/PA', trad: '**Certidões de Dívida Ativa Tributária e Não Tributária**, expedidas pela Secretaria de Estado da Fazenda do Pará – SEFA/PA', rev: 'certidões de dívida ativa tributária e não tributária da Secretaria de Estado da Fazenda do Pará – SEFA/PA' }
 ];
 const certDispensada = ct => !!($(ct.disp) && $(ct.disp).checked);
 function itCertidoes(c) {
@@ -652,18 +653,21 @@ function itCertidoes(c) {
   const pessoas = GA.pessoas.length ? GA.pessoas : [{ nome: '' }];
   let positiva = false;
   const L = i => String.fromCharCode((trad ? 65 : 97) + i);
-  const blocos = CERTIDOES_VENDEDOR.filter(ct => !certDispensada(ct)).map(ct => {
+  // Formato do usuário (24/10/2026), uma entrada por certidão e por vendedor:
+  // CERTIDÃO DE AÇÕES CÍVEIS – TJPA, emitida em xxx, sob o nº xxx, em favor do “NOME DO VENDEDOR”.
+  // "do/da" pelo gênero da pessoa na qualificação; nome entre aspas e SEM negrito (só aqui).
+  const blocos = [];
+  CERTIDOES_VENDEDOR.filter(ct => !certDispensada(ct)).forEach(ct => {
     const lns = linhas(ct.id);
-    const itens = pessoas.map((p, i) => {
+    pessoas.forEach((p, i) => {
       const [num, data, res] = (lns[i] || '').split('|').map(s => (s || '').trim());
-      const N = num || '[[nº da certidão xxx]]', D = data || '[[data de emissão xxx]]', Rs = res ? res.toUpperCase() : '[[resultado xxx]]';
+      const N = num || '[[nº da certidão xxx]]', D = data || '[[data de emissão xxx]]', Rs = (res || '').toUpperCase();
       if (/POSITIV/.test(Rs) && !/EFEITO/.test(Rs)) positiva = true;
-      const nomeP = p.nome ? `**${p.nome.toUpperCase()}**` : '[[nome xxx]]';
-      return trad
-        ? `${pessoas.length > 1 ? (i + 1) + ') ' : ''}${nomeP} – ${ct.pl ? 'nºs' : 'nº'} ${N}, ${ct.pl ? 'emitidas' : 'emitida'} em ${D}, com resultado ${Rs}`
-        : `${pessoas.length > 1 ? nomeP + ': ' : ''}${ct.pl ? 'nºs' : 'nº'} ${N}, de ${D}, ${Rs}`;
+      const res2 = /POSITIV/.test(Rs) ? `, com resultado ${/EFEITO/.test(Rs) ? 'POSITIVO COM EFEITO DE NEGATIVA' : 'POSITIVO'}` : '';
+      const fem = generoPessoa(p.nome, v('m_aQual'), GA.g) === 'F';
+      const quemP = p.nome ? `“${p.nome.toUpperCase()}”` : '“[[nome do vendedor xxx]]”';
+      blocos.push(`**${ct.tit}**, ${ct.pl ? 'emitidas' : 'emitida'} em ${D}, sob ${ct.pl ? 'os nºs' : 'o nº'} ${N}, em favor ${fem ? 'da' : 'do'} ${quemP}${res2}`);
     });
-    return trad ? `${ct.trad}: ${itens.join('; ')}` : `${ct.rev}${pessoas.length > 1 ? ' – ' : ' '}${itens.join('; ')}`;
   });
   // Empresa alienante: CND conjunta RFB/PGFN, que abrange as contribuições previdenciárias (art. 262, I e II, do CNSNR).
   if ((c.m === 'cv' || c.m === 'dacao') && temCNPJ('m_aQual')) blocos.push(trad

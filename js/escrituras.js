@@ -43,13 +43,14 @@ const Pronta = {
         const venc = lns.map(l => { const p = l.split('|').map(s => s.trim()); const ate = this.data(p[3]); const em = this.data(p[1]); return ate || (em && new Date(em.getTime() + VALIDADE_CERT[k] * 864e5)); });
         if (venc.some(d => !d)) { add('falta', `${ROTULO_CERT[k]}: falta a data de emissão`); continue; }
         const dias = Math.min(...venc.map(d => this.diasAte(d)));
-        add(dias < 0 ? 'falta' : dias <= 7 ? 'aviso' : 'ok', `${ROTULO_CERT[k]}: ${dias < 0 ? `VENCIDA há ${-dias} dia(s)` : dias <= 7 ? `vence em ${dias} dia(s)` : `válida (${dias} dias)`}`);
+        // Vencida NÃO impede lavrar (decisão do usuário, 24/10/2026: "sob minha responsabilidade") – só avisa.
+        add(dias <= 7 ? 'aviso' : 'ok', `${ROTULO_CERT[k]}: ${dias < 0 ? `VENCIDA há ${-dias} dia(s) – pode lavrar sob sua responsabilidade` : dias <= 7 ? `vence em ${dias} dia(s)` : `válida (${dias} dias)`}`);
       }
       const it30 = this.data(ce.riData);
-      add(!it30 ? 'falta' : this.diasAte(it30) < -30 ? 'falta' : this.diasAte(it30) < -23 ? 'aviso' : 'ok',
-        !it30 ? 'Certidão de inteiro teor: informar a data' : `Inteiro teor de ${ce.riData}: ${-this.diasAte(it30) > 30 ? 'mais de 30 dias – pedir atualizada' : `${30 + this.diasAte(it30)} dia(s) de validade`}`);
+      add(!it30 ? 'falta' : this.diasAte(it30) < -23 ? 'aviso' : 'ok',
+        !it30 ? 'Certidão de inteiro teor: informar a data' : `Inteiro teor de ${ce.riData}: ${-this.diasAte(it30) > 30 ? 'mais de 30 dias (VENCIDA) – pode lavrar sob sua responsabilidade; o registro de imóveis pode pedir atualizada' : `${30 + this.diasAte(it30)} dia(s) de validade`}`);
     }
-    if (ce.casExp) { const d = this.data(ce.casExp); const sobra = d ? 90 + this.diasAte(d) : null; add(sobra === null ? 'falta' : sobra < 0 ? 'falta' : sobra <= 7 ? 'aviso' : 'ok', sobra === null ? 'Certidão de casamento: data inválida' : sobra < 0 ? 'Certidão de casamento com mais de 90 dias' : `Certidão de casamento: ${sobra} dia(s) de validade`); }
+    if (ce.casExp) { const d = this.data(ce.casExp); const sobra = d ? 90 + this.diasAte(d) : null; add(sobra === null ? 'falta' : sobra <= 7 ? 'aviso' : 'ok', sobra === null ? 'Certidão de casamento: data inválida' : sobra < 0 ? 'Certidão de casamento com mais de 90 dias (VENCIDA) – pode lavrar sob sua responsabilidade' : `Certidão de casamento: ${sobra} dia(s) de validade`); }
     add(ce.hash ? 'ok' : 'falta', ce.hash ? 'CNIB consultada (hash informado)' : 'Consultar a CNIB e anotar o hash');
     const faltam = it.filter(x => x.st === 'falta').length, avisos = it.filter(x => x.st === 'aviso').length;
     return { itens: it, faltam, avisos, nivel: faltam ? 'vermelho' : avisos ? 'amarelo' : 'verde' };
@@ -354,6 +355,11 @@ const Esc = {
     if ((!livro || !lerFolhas(folhas)) && !await confirmar('Livro e folhas',
       `${!livro ? 'O livro' : 'As folhas'}${!livro && !lerFolhas(folhas) ? ' e as folhas' : ''} ficaram em branco. Sem isso o ato não entra na conferência do livro nem na CENSEC (dá para completar depois na escritura). Marcar como LAVRADA assim mesmo?`,
       'Marcar assim mesmo', 'Voltar')) return;
+    // Certidões vencidas não impedem a lavratura (decisão do usuário): só avisa e pede a confirmação dele.
+    if (!ehProcuracao(r)) {
+      const venc = Pronta.checar(r).itens.filter(x => /VENCIDA/.test(x.txt)).map(x => x.txt.replace(/ – pode lavrar.*$/, ''));
+      if (venc.length && !await confirmar('Certidões vencidas', `Há certidão vencida: ${venc.join('; ')}. Lavrar mesmo assim, sob sua responsabilidade?`, 'Lavrar mesmo assim', 'Voltar')) return;
+    }
     // Ato com valor (compra e venda, dação, cessão, doação) sem emolumentos não entra no repasse nem nas receitas: avisa antes.
     if (/COMPRA E VENDA|DA[CÇ][AÃ]O|CESS[AÃ]O|DOA[CÇ][AÃ]O/i.test(r.natureza || '') && !r.emolumentos && !await confirmar('Emolumentos',
       'Esta escritura está sem o valor dos emolumentos (faça o orçamento ou preencha "Total emolumentos" na escritura). Sem isso ela fica fora do repasse ao Cartório de Santana. Marcar como LAVRADA assim mesmo?',

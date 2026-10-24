@@ -252,10 +252,14 @@ const Esc = {
   // Renomeia a pasta de MINUTA - para LAVRADA - (no Drive; o HD acompanha na próxima sincronização).
   async lavrar(id) {
     const r = await Reg.get('escrituras', id);
-    const resp = await pedir('Marcar como LAVRADA', 'A pasta passa de "MINUTA - " para "LAVRADA - ". Livro e folhas entram na conferência e nas comunicações (CENSEC, DOI).', [
+    // Sugestão pela sequência oficial ("Próximo ato" da tela Início): confira com o livro antes de confirmar.
+    const p = await Seq.proximo(ehProcuracao(r) ? 'P' : 'E');
+    const resp = await pedir('Marcar como LAVRADA', 'A pasta passa de "MINUTA - " para "LAVRADA - ". Livro e folhas entram na conferência e nas comunicações (CENSEC, DOI).' +
+      (p && !r.folhas ? ` Sugestão pela sequência do cartório: ato nº ${p.num || '?'}, livro ${p.livro}, a partir da fl. ${p.folha} (complete a folha final).` : ''), [
       { id: 'data', rotulo: 'Data da lavratura', tipo: 'date', valor: r.dataLavratura || hojeISO() },
-      { id: 'livro', rotulo: `Livro (ex.: ${ehProcuracao(r) ? '024-P' : '024-E'})`, valor: r.livro || '' },
-      { id: 'folhas', rotulo: 'Folhas (ex.: 010/011)', valor: r.folhas || '' },
+      { id: 'num', rotulo: 'Nº do ato na sequência do cartório', valor: r.numAto || (p && p.num) || '' },
+      { id: 'livro', rotulo: `Livro (ex.: ${ehProcuracao(r) ? '024-P' : '024-E'})`, valor: r.livro || (p && p.livro) || '' },
+      { id: 'folhas', rotulo: 'Folhas (ex.: 010/011)', valor: r.folhas || (p && p.folha) || '' },
       { id: 'selo', rotulo: 'Selo digital (pode deixar em branco)', valor: r.selo || '' }], ['Marcar como LAVRADA', 'Cancelar']);
     if (!resp) return;
     const livro = resp.livro ? normLivro(resp.livro) : '', folhas = formatarFolhas(resp.folhas);
@@ -280,7 +284,8 @@ const Esc = {
     try {
       const novo = 'LAVRADA - ' + r.nome;
       await Nuvem.renomear(await this.pastaDe(r), novo);
-      Object.assign(r, { situacao: 'LAVRADA', pasta: novo, dataLavratura: resp.data || r.dataLavratura || hojeISO(), selo: resp.selo, livro: livro || r.livro || '', folhas: folhas || r.folhas || '' });
+      Object.assign(r, { situacao: 'LAVRADA', pasta: novo, dataLavratura: resp.data || r.dataLavratura || hojeISO(), selo: resp.selo, livro: livro || r.livro || '', folhas: folhas || r.folhas || '',
+        numAto: parseInt(resp.num, 10) || r.numAto || null });
       await Reg.salvar('escrituras', r);
       aviso('Pasta renomeada para LAVRADA.');
       fecharModal(); App.atualizarTudo(); this.detalhe(id);

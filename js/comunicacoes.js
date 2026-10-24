@@ -70,10 +70,12 @@ const Com = {
     const n = semAcento(`${e.natureza || ''} ${e.nome || ''}`).toUpperCase(), proc = /PROCURA/.test(n);
     // Atos acessórios citam "compra e venda" no nome, mas não transmitem o imóvel: sem DOI e sem análise COAF.
     const acessorio = /ADITAMENTO|RERRATIF|RE-RATIF|RETIFICA|INSTITUICAO DE ONUS|ANUENCIA|CANCELAMENTO|DECLARAT|ATA NOTARIAL|SUBSTABELEC|REVOGA/.test(n);
+    // Ato de outro escrevente: entra só na conferência do livro (sequência); as comunicações dele não são feitas aqui.
+    const meu = !e.outroEscrevente;
     return {
       censec: /INVENT|DIVORC|SEPARA/.test(n) ? 'CESDI' : /TESTAMENT/.test(n) ? 'RCTO' : 'CEP',
-      doi: !proc && !acessorio && /COMPRA|VENDA|DACAO|DOACAO|CESSAO|INVENT|PARTILHA|DIVORC|PERMUTA|INTEGRALIZ/.test(n),
-      coaf: !proc && !acessorio
+      doi: meu && !proc && !acessorio && /COMPRA|VENDA|DACAO|DOACAO|CESSAO|INVENT|PARTILHA|DIVORC|PERMUTA|INTEGRALIZ/.test(n),
+      coaf: meu && !proc && !acessorio
     };
   },
   chave: q => `${CFG.cartorioAtual}|${q}`,
@@ -125,7 +127,9 @@ const Com = {
     }
     const assinatura = doPeriodo.map(e => [e.id, normLivro(e.livro), formatarFolhas(e.folhas), e.selo, e.dataLavratura].join('~')).sort().join('|') +
       '#' + livros.map(L => CFG.folhasInutilizadas[`${CFG.cartorioAtual}|${L}`] || '').join('|');
-    return { qi, doPeriodo, prob, erros: prob.filter(p => p.g === 'erro').length, avisos: prob.filter(p => p.g === 'aviso').length, resumoLivros, assinatura };
+    // Para a CENSEC deste app: só os atos do Luís (os de outros escreventes servem só para fechar a sequência).
+    const censecAtos = doPeriodo.filter(e => !e.outroEscrevente);
+    return { qi, doPeriodo, censecAtos, prob, erros: prob.filter(p => p.g === 'erro').length, avisos: prob.filter(p => p.g === 'aviso').length, resumoLivros, assinatura };
   },
 
   // Situação das duas conferências da quinzena (valem só se nada mudou depois delas).
@@ -166,7 +170,7 @@ const Com = {
     const doiPend = lav.filter(e => this.tipos(e).doi && !(e.comunicacoes || {}).doi && noControle(e));
     const coafPend = lav.filter(e => this.tipos(e).coaf && !(e.comunicacoes || {}).coaf && noControle(e));
     $('comKpis').innerHTML = `
-      <div class="kpi ${envC ? '' : 'destaque'}"><small>CENSEC – ${qi.nome}</small><b>${envC ? 'Autorizada' : r.doPeriodo.length ? r.doPeriodo.length + ' ato(s)' : 'Negativa'}</b><span>${envC ? 'em ' + dataBR(envC.data) + (envC.protocolo ? ' · ' + esc(envC.protocolo) : '') : 'prazo ' + dataBR(qi.prazo)}</span></div>
+      <div class="kpi ${envC ? '' : 'destaque'}"><small>CENSEC – ${qi.nome}</small><b>${envC ? 'Autorizada' : r.censecAtos.length ? r.censecAtos.length + ' ato(s)' : 'Negativa'}</b><span>${envC ? 'em ' + dataBR(envC.data) + (envC.protocolo ? ' · ' + esc(envC.protocolo) : '') : 'prazo ' + dataBR(qi.prazo)}</span></div>
       <div class="kpi"><small>Conferência das folhas</small><b>${st.c2 ? '2 de 2' : st.c1 ? '1 de 2' : '0 de 2'}</b><span>${r.erros} erro(s) · ${r.avisos} aviso(s)</span></div>
       <div class="kpi"><small>DOI pendentes (todas)</small><b>${doiPend.length}</b><span>${doiPend.length ? 'mais antiga vence ' + dataBR(ultimoDiaUtil(mesSeguinte(doiPend.map(e => mesDe(e.dataLavratura)).sort()[0]))) : 'em dia'}</span></div>
       <div class="kpi"><small>COAF – atos a analisar</small><b>${coafPend.length}</b><span>não ocorrência anual até 31/01</span></div>`;
@@ -189,7 +193,7 @@ const Com = {
       <div class="acoes">${btnConf}<button id="comExterno">Registrar ato sem pasta</button><button id="comInut">Folhas inutilizadas</button><button id="comAtualizar">Reler pastas e traslados do Drive</button></div>`;
 
     // 2) CENSEC
-    const linhas = r.doPeriodo.sort((a, b) => normLivro(a.livro).localeCompare(normLivro(b.livro)) || ((lerFolhas(a.folhas) || {}).ini || 0) - ((lerFolhas(b.folhas) || {}).ini || 0));
+    const linhas = r.censecAtos.sort((a, b) => normLivro(a.livro).localeCompare(normLivro(b.livro)) || ((lerFolhas(a.folhas) || {}).ini || 0) - ((lerFolhas(b.folhas) || {}).ini || 0));
     $('comCensec').innerHTML = `<h2>2. CENSEC – ${qi.nome}</h2>
       <div class="hint">Escrituras e procurações (CEP); inventários e divórcios (CESDI). Prazo: ${dataBR(qi.prazo)}. Sem atos, a comunicação é NEGATIVA.</div>
       <div class="rolagem"><table class="tab"><thead><tr><th>Data</th><th>Módulo</th><th>Ato</th><th>Livro / folhas</th><th>Selo</th></tr></thead><tbody>
@@ -264,12 +268,12 @@ const Com = {
     const { q } = this.ultimo, lav = await this.lavradas(), r = this.conferir(lav, q), st = this.estadoConf(q, r.assinatura);
     if (!st.c1 || !st.c2 || r.erros) return this.render();
     const resp = await pedir('Autorizar comunicação à CENSEC',
-      `${r.qi.nome}: ${r.doPeriodo.length ? r.doPeriodo.length + ' ato(s)' : 'comunicação NEGATIVA (nenhum ato)'}. Autorizo a comunicação. Transmita no site da CENSEC e, se quiser, informe o protocolo.`,
+      `${r.qi.nome}: ${r.censecAtos.length ? r.censecAtos.length + ' ato(s)' : 'comunicação NEGATIVA (nenhum ato)'}. Autorizo a comunicação. Transmita no site da CENSEC e, se quiser, informe o protocolo.`,
       [{ id: 'protocolo', rotulo: 'Protocolo da CENSEC (opcional)', valor: '' }], ['Autorizo', 'Cancelar']);
     if (!resp) return;
-    const reg = { em: agora(), data: hojeISO(), protocolo: resp.protocolo, qtd: r.doPeriodo.length, assinatura: r.assinatura };
+    const reg = { em: agora(), data: hojeISO(), protocolo: resp.protocolo, qtd: r.censecAtos.length, assinatura: r.assinatura };
     await Reg.salvarCfg({ comEnvios: { ...CFG.comEnvios, [`${this.chave(q)}|censec`]: reg } });
-    for (const e of r.doPeriodo) { e.comunicacoes = { ...(e.comunicacoes || {}), censec: { data: reg.data, protocolo: reg.protocolo } }; await Reg.salvar('escrituras', e); }
+    for (const e of r.censecAtos) { e.comunicacoes = { ...(e.comunicacoes || {}), censec: { data: reg.data, protocolo: reg.protocolo } }; await Reg.salvar('escrituras', e); }
     aviso('Comunicação à CENSEC autorizada e registrada.');
     this.render();
   },
@@ -318,7 +322,9 @@ const Com = {
   // Ato lavrado no cartório que não tem pasta de parceiro: entra só para fechar a sequência do livro e as comunicações.
   async atoSemPasta() {
     const q = this.ultimo && this.ultimo.q;
-    const resp = await pedir('Registrar ato sem pasta', 'Ato lavrado no livro que não tem pasta de parceiro. Ele entra na conferência das folhas e nas comunicações (CENSEC, DOI e COAF).', [
+    const resp = await pedir('Registrar ato sem pasta', 'Ato lavrado no livro que não tem pasta de parceiro. Se foi lavrado por OUTRO escrevente, informe quem: ele entra só na conferência das folhas e no "Próximo ato" (fora do repasse, das receitas e das suas comunicações). Se foi você, deixe "Lavrado por" em branco: entra também na CENSEC, DOI e COAF.', [
+      { id: 'por', rotulo: 'Lavrado por (outro escrevente; em branco = você)', valor: '' },
+      { id: 'num', rotulo: 'Nº do ato na sequência do cartório (ex.: 137)', valor: '' },
       { id: 'natureza', rotulo: 'Natureza (ex.: PROCURAÇÃO PÚBLICA, ESCRITURA PÚBLICA DE COMPRA E VENDA)', valor: 'ESCRITURA PÚBLICA DE COMPRA E VENDA' },
       { id: 'a', rotulo: 'Outorgante(s) / mandante(s)', valor: '' },
       { id: 'b', rotulo: 'Outorgado(s) / procurador(es)', valor: '' },
@@ -332,11 +338,13 @@ const Com = {
     // Mesmo padrão das pastas: "... - OUTORGANTE x OUTORGADO" (o "x" fica minúsculo).
     const esq = nomePasta(`${/PROCURA/.test(nat) ? 'PROCURACAO' : 'ATO'} LIVRO ${normLivro(resp.livro)} FLS ${formatarFolhas(resp.folhas).replace(/\//g, '-')} - ${resp.a || 'xxx'}`, 110);
     const nome = esq + ' x ' + nomePasta(resp.b || 'xxx', 50);
-    const id = Esc.idEsc('SEM PASTA (CARTORIO)', nome);
-    await Reg.salvar('escrituras', { id, cartorioId: CFG.cartorioAtual, parceiro: 'SEM PASTA (CARTORIO)', nome, externo: true, situacao: 'LAVRADA',
+    const outro = resp.por.trim().toUpperCase();
+    const parceiro = outro ? 'OUTRO ESCREVENTE' : 'SEM PASTA (CARTORIO)';
+    const id = Esc.idEsc(parceiro, nome);
+    await Reg.salvar('escrituras', { id, cartorioId: CFG.cartorioAtual, parceiro, nome, externo: true, situacao: 'LAVRADA',
       natureza: nat, outorgantes: resp.a.toUpperCase(), outorgados: resp.b.toUpperCase(), livro: normLivro(resp.livro), folhas: formatarFolhas(resp.folhas),
-      dataLavratura: resp.data, selo: resp.selo, criadoEm: agora() });
-    aviso('Ato registrado: ' + nome);
+      dataLavratura: resp.data, selo: resp.selo, numAto: parseInt(resp.num, 10) || null, outroEscrevente: outro || '', criadoEm: agora() });
+    aviso(outro ? `Ato de ${outro} registrado (só para a sequência): ${nome}` : 'Ato registrado: ' + nome);
     this.render();
   },
 
@@ -355,7 +363,7 @@ const Com = {
   csvCensec() {
     const { r } = this.ultimo;
     const cab = ['Módulo', 'Natureza', 'Data da lavratura', 'Livro', 'Folhas', 'Selo', 'Outorgante(s)', 'Outorgado(s)', 'Parceiro', 'Pasta'];
-    const lin = r.doPeriodo.map(e => [this.tipos(e).censec, e.natureza, dataBR(e.dataLavratura), normLivro(e.livro), formatarFolhas(e.folhas), e.selo, e.outorgantes, e.outorgados, e.parceiro, e.pasta]);
+    const lin = r.censecAtos.map(e => [this.tipos(e).censec, e.natureza, dataBR(e.dataLavratura), normLivro(e.livro), formatarFolhas(e.folhas), e.selo, e.outorgantes, e.outorgados, e.parceiro, e.pasta]);
     const csv = [cab, ...lin].map(l => l.map(x => `"${String(x ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
     baixarBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), nomePasta(`CENSEC - ${r.qi.nome}`) + '.csv');
   },
@@ -404,5 +412,69 @@ const Com = {
       const it = t.closest('[data-esc]');
       if (it) Esc.detalhe(it.dataset.esc);
     });
+  }
+};
+
+/* --------------------------- Próximo ato --------------------------- */
+// Próximo número, livro, folha e selo esperado de cada tipo de livro (E = escrituras, P = procurações).
+// Parte da última consulta ao servidor/ACSIV (CFG.sequencia) e soma os atos lavrados no app depois dela, inclusive
+// os de outros escreventes. O número do selo é só o esperado: quem dá o número é o ACSIV, na emissão.
+// "000199491A", "199.491-A", "999002-A" -> { n: 199491, s: 'A' }
+function lerSelo(txt) {
+  const m = semAcento(String(txt || '')).toUpperCase().replace(/[^0-9A-Z]/g, '').match(/^0*(\d+)([A-Z])$/);
+  return m ? { n: parseInt(m[1], 10), s: m[2] } : null;
+}
+const Seq = {
+  ref: tipo => (CFG.sequencia || {})[`${CFG.cartorioAtual}|${tipo}`] || null,
+  tipoDe: e => /-P$/.test(normLivro(e.livro)) || ehProcuracao(e) ? 'P' : 'E',
+
+  async proximo(tipo) {
+    const ref = this.ref(tipo);
+    const lav = (await Reg.doCartorio('escrituras')).filter(e => e.situacao === 'LAVRADA' && !e.excluido && e.livro && this.tipoDe(e) === tipo);
+    // Livro atual: o da referência, ou o mais recente lançado no app (pela data).
+    const recentes = lav.filter(e => e.dataLavratura).sort((a, b) => b.dataLavratura.localeCompare(a.dataLavratura));
+    const livro = ref ? normLivro(ref.livro) : recentes[0] ? normLivro(recentes[0].livro) : '';
+    if (!livro) return null;
+    const doLivro = lav.filter(e => normLivro(e.livro) === livro && lerFolhas(e.folhas));
+    const fimRef = ref && lerFolhas(ref.folhas) ? lerFolhas(ref.folhas).fim : 0;
+    const ultimo = doLivro.reduce((m, e) => lerFolhas(e.folhas).fim > m.fim ? { fim: lerFolhas(e.folhas).fim, e } : m, { fim: fimRef, e: null });
+    const nums = lav.map(e => e.numAto).filter(Boolean);
+    const num = Math.max(ref ? ref.num || 0 : 0, ...nums, 0);
+    // Aditamentos ficam no mesmo livro, mas usam selo gratuito (outra numeração): só conta selo da mesma série e
+    // perto da referência.
+    const sRef = ref && lerSelo(ref.selo);
+    const selos = [sRef, ...lav.filter(e => !ref || (e.dataLavratura || '') >= ref.data).map(e => lerSelo(e.selo))]
+      .filter(s => s && (!sRef || (s.s === sRef.s && Math.abs(s.n - sRef.n) < 5000)));
+    const selo = selos.sort((a, b) => b.n - a.n)[0];
+    const ultData = ultimo.e ? ultimo.e.dataLavratura : ref ? ref.data : '';
+    return {
+      tipo, livro, folha: numFolha(Math.floor(ultimo.fim / 2) * 2 + 2), num: num ? num + 1 : null,
+      selo: selo ? `${String(selo.n + 1).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}-${selo.s}` : '',
+      ultimo: ultimo.e ? `${ultimo.e.nome} – fls. ${formatarFolhas(ultimo.e.folhas)}` : ref ? `ato ${ref.num} – fls. ${ref.folhas} (${ref.fonte})` : '',
+      ultData, ref
+    };
+  },
+
+  async html() {
+    const linha = (p, rot) => p ? `<div class="item"><div><div class="t">${rot}: ${p.num ? 'nº ' + p.num + ' · ' : ''}Livro ${esc(p.livro)} · a partir da fl. ${p.folha}${p.selo ? ' · selo esperado ' + esc(p.selo) : ''}</div>
+      <div class="s">Último: ${esc(p.ultimo)}${p.ultData ? ' · ' + dataBR(p.ultData) : ''}</div></div></div>` : `<div class="item"><div><div class="t">${rot}: sem referência</div><div class="s">Use "Atualizar referência".</div></div></div>`;
+    return linha(await this.proximo('E'), 'Escritura') + linha(await this.proximo('P'), 'Procuração');
+  },
+
+  // Depois de consultar o servidor/ACSIV: grava o último ato oficial de cada tipo (comum entre PC e celular).
+  async atualizarRef() {
+    const tipo = (await pedir('Atualizar referência', 'Qual livro? Digite E (escrituras) ou P (procurações).', [{ id: 't', rotulo: 'Tipo', valor: 'E' }], ['Continuar', 'Cancelar']) || {}).t;
+    if (!tipo) return;
+    const T = tipo.trim().toUpperCase().startsWith('P') ? 'P' : 'E', r = this.ref(T) || {};
+    const resp = await pedir(`Último ato oficial – ${T === 'P' ? 'procurações' : 'escrituras'}`, 'Dados do último ato lavrado no cartório (pasta ATOS NOTARIAIS no servidor e ACSIV), de qualquer escrevente.', [
+      { id: 'num', rotulo: 'Nº do ato', valor: r.num || '' }, { id: 'livro', rotulo: 'Livro', valor: r.livro || (T === 'P' ? '024-P' : '024-E') },
+      { id: 'folhas', rotulo: 'Folhas', valor: r.folhas || '' }, { id: 'selo', rotulo: 'Selo', valor: r.selo || '' },
+      { id: 'data', rotulo: 'Data da lavratura', tipo: 'date', valor: r.data || hojeISO() }], ['Salvar', 'Cancelar']);
+    if (!resp) return;
+    if (!lerFolhas(resp.folhas)) return aviso('Informe as folhas.', 'erro');
+    const nova = { num: parseInt(resp.num, 10) || 0, livro: normLivro(resp.livro), folhas: formatarFolhas(resp.folhas), selo: resp.selo.trim().toUpperCase(), data: resp.data, fonte: 'informado em ' + dataBR(hojeISO()) };
+    await Reg.salvarCfg({ sequencia: { ...(CFG.sequencia || {}), [`${CFG.cartorioAtual}|${T}`]: nova } });
+    aviso('Referência atualizada.');
+    App.renderInicio();
   }
 };

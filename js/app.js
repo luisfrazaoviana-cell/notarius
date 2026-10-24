@@ -131,6 +131,7 @@ const App = {
       <div class="kpi clic" data-ir="receitas"><small>Orçamentos em aberto</small><b>R$ ${brl(rec.orcAberto)}</b><span>${rec.orcAbertoQtd} orçamento(s) não pago(s)</span></div>
       <div class="kpi clic" data-ir="receitas"><small>Meus honorários a receber</small><b>R$ ${brl(rec.honAberto)}</b><span>${rec.honAbertoQtd} ato(s)</span></div>
       <div class="kpi clic" data-ir="comunicacoes"><small>Comunicações pendentes</small><b>${com.qtd}</b><span>${com.prazo ? 'próximo prazo ' + dataBR(com.prazo) : 'em dia'}</span></div>`;
+    $('iniProximo').innerHTML = await Seq.html();
     $('iniMinutas').innerHTML = minutas.length ? minutas.slice(0, 12).map(e => Esc.itemHTML(e)).join('') : '<div class="vazio">Nenhuma minuta em andamento.</div>';
   },
 
@@ -247,6 +248,7 @@ const App = {
 
   iniciarAjustes() {
     $('btnEntrar').onclick = () => this.entrar();
+    $('iniSeqRef').onclick = () => Seq.atualizarRef();
     $('ajEntrar').onclick = async () => {
       await salvarCfg({ clientId: $('ajClientId').value.trim() });
       const raizId = this.idDoLink($('ajRaiz').value);

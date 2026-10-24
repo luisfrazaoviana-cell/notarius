@@ -288,6 +288,134 @@ function montarChecklist() {
     s.itens.map((it, j) => `<label><input type="checkbox" id="ck${i}_${j}"><span>${it}</span></label>`).join('') + '</div>').join('');
 }
 
+// Dados comuns do checklist impresso e copiado.
+function dadosChecklist() {
+  const m = $('cModal').value, imovel = $('cImovel').value, ct = C();
+  const [hA, hM, hD] = hojeISO().split('-').map(Number);
+  return {
+    m, ct, secs: listaDocumentos(m, imovel, opcoesChecklist()),
+    ato: NOMES_MODAL[m] + (m === 'procuracao' ? '' : ` – imóvel ${imovel}`),
+    cliente: $('cCliente').value.trim().toUpperCase(),
+    data: `${ct.cidadeData || ''}${ct.cidadeData ? ', ' : ''}${hD} de ${MESES_NOME[hM - 1]} de ${hA}.`,
+    atende: [ct.lavrador, ct.cargo].filter(Boolean).join(' – '),
+    contato: ct.contato || ''
+  };
+}
+const AVISO_CHECKLIST = 'Prazos usuais: certidão de matrícula, 30 dias; certidões de registro civil, 90 dias. Traga os documentos originais. A lista pode mudar conforme o caso concreto.';
+
+// Checklist em PDF A4 com o timbre das escrituras (modelo 13): faixa azul de borda a borda, selo, linha dourada.
+// Cada página nova repete o timbre. Itens com quadradinho para marcar à mão.
+async function checklistPDF() {
+  await carregarScript(LIB.jspdf);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const D = dadosChecklist(), ct = D.ct, logo = await logoDataURL();
+  const W = 210, H = 297, ME = 30, MD = 20, LARG = W - ME - MD;
+  const cor = (ct.cor || '#14284b').match(/\w\w/g).map(h => parseInt(h, 16)), OURO = [196, 154, 58];
+  const l = (ct.timbre || ct.cabecalho || ct.nome || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const [l1 = '', l2 = '', l3 = '', ...resto] = l;
+  const tit = resto.join(' · ').split(/\s+[–-]\s+/);
+  const direita = [tit[0], tit.slice(1).join(' – '), ...(ct.endereco || '').split('\n')].map(s => (s || '').trim()).filter(Boolean);
+  const TOPO = 48;
+  const timbre = () => {
+    doc.setFillColor(...cor); doc.rect(0, 0, W, 36, 'F');
+    doc.setFillColor(...OURO); doc.rect(0, 36, W, 1.1, 'F');
+    let x = ME;
+    if (logo) { doc.addImage(logo, 'PNG', ME - 3, 4.5, 27, 27); x = ME + 27; }
+    doc.setTextColor(255); doc.setFont('times', 'bold'); doc.setFontSize(15); doc.text(l1, x, 15.5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(223, 229, 239); doc.text(l2, x, 21);
+    doc.setTextColor(232, 211, 162); doc.text(l3, x, 25.5);
+    doc.setFontSize(7.6);
+    const larg = Math.max(...direita.map((t, i) => { doc.setFont('helvetica', i ? 'normal' : 'bold'); return doc.getTextWidth(t); }));
+    const yIni = 18 - (direita.length - 1) * 2;
+    doc.setDrawColor(...OURO); doc.setLineWidth(0.3); doc.line(W - MD - larg - 3, yIni - 3.5, W - MD - larg - 3, yIni + (direita.length - 1) * 4 + 1.5);
+    direita.forEach((t, i) => {
+      doc.setFont('helvetica', i ? 'normal' : 'bold'); doc.setTextColor(...(i ? [223, 229, 239] : [255, 255, 255]));
+      doc.text(t, W - MD, yIni + i * 4, { align: 'right' });
+    });
+    doc.setTextColor(0);
+  };
+  timbre();
+  let y = TOPO;
+  const cabe = h => { if (y + h > H - 15) { doc.addPage(); timbre(); y = TOPO; } };
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...cor);
+  doc.text('CHECKLIST DE DOCUMENTOS', ME + LARG / 2, y, { align: 'center' }); y += 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor(...OURO);
+  doc.text(D.ato, ME + LARG / 2, y, { align: 'center' }); y += 5;
+  if (D.cliente) { doc.setTextColor(60); doc.setFontSize(10); doc.text('Cliente: ' + D.cliente, ME + LARG / 2, y, { align: 'center' }); y += 5; }
+  doc.setDrawColor(...OURO); doc.setLineWidth(0.3); doc.line(ME + LARG / 2 - 25, y, ME + LARG / 2 + 25, y); y += 7;
+  D.secs.forEach((s, i) => {
+    cabe(16);
+    doc.setFillColor(234, 237, 244); doc.rect(ME, y - 4.6, LARG, 6.8, 'F');
+    doc.setFillColor(...cor); doc.rect(ME, y - 4.6, 1.2, 6.8, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...cor);
+    doc.text(`${i + 1}. ${s.titulo.toUpperCase()}`, ME + 3.5, y); y += 7;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
+    s.itens.forEach(it => {
+      const linhas = doc.splitTextToSize(it, LARG - 8);
+      cabe(linhas.length * 4.6 + 1.5);
+      doc.setDrawColor(...cor); doc.setLineWidth(0.3); doc.rect(ME + 1, y - 3.1, 3.4, 3.4);
+      doc.text(linhas, ME + 7.5, y); y += linhas.length * 4.6 + 1.6;
+    });
+    y += 3;
+  });
+  const fim = doc.splitTextToSize(AVISO_CHECKLIST, LARG);
+  cabe(fim.length * 4 + 30);
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(90); doc.text(fim, ME, y); y += fim.length * 4 + 7;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30); doc.text(D.data, ME + LARG / 2, y, { align: 'center' }); y += 9;
+  if (D.atende) {
+    doc.setDrawColor(...OURO); doc.line(ME + LARG / 2 - 35, y - 4, ME + LARG / 2 + 35, y - 4);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(...cor); doc.text(D.atende, ME + LARG / 2, y, { align: 'center' }); y += 5;
+  }
+  if (D.contato) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(70); doc.text(D.contato, ME + LARG / 2, y, { align: 'center' }); }
+  const nome = `CHECKLIST - ${nomePasta(NOMES_MODAL[D.m], 40)}${D.cliente ? ' - ' + nomePasta(D.cliente, 60) : ''}.pdf`;
+  return { blob: doc.output('blob'), nome };
+}
+
+// No celular abre a tela de compartilhar (imprimir, WhatsApp, e-mail); no PC baixa o PDF.
+async function imprimirChecklist(b) {
+  b.disabled = true;
+  try {
+    const { blob, nome } = await checklistPDF();
+    const arq = new File([blob], nome, { type: 'application/pdf' });
+    if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [arq] })) {
+      try { await navigator.share({ files: [arq], title: nome }); }
+      catch (e) { if (e.name !== 'AbortError') baixarBlob(blob, nome); }
+    } else baixarBlob(blob, nome);
+  } catch (e) { aviso(e.message, 'erro'); } finally { b.disabled = false; }
+}
+
+// Cópia com formatação: negrito e itálico do WhatsApp no texto simples e uma versão HTML para e-mail e Word.
+function checklistTexto() {
+  const D = dadosChecklist(), l = ['*' + (C().timbre || C().nome).split('\n')[0] + '*' + (D.ct.cidadeData ? ' · ' + D.ct.cidadeData : ''),
+    '_Checklist de documentos_', '', '*' + D.ato.toUpperCase() + '*'];
+  if (D.cliente) l.push('Cliente: ' + D.cliente);
+  D.secs.forEach((s, i) => l.push('', `*${i + 1}. ${s.titulo.toUpperCase()}*`, ...s.itens.map(it => '☐ ' + it)));
+  l.push('', '_' + AVISO_CHECKLIST + '_', '', D.data);
+  if (D.atende) l.push('', '*' + D.atende + '*');
+  if (D.contato) l.push(D.contato);
+  return l.join('\n');
+}
+function checklistHTMLCopia() {
+  const D = dadosChecklist(), cor = D.ct.cor || '#14284b', t = (C().timbre || C().nome).split('\n')[0];
+  return `<div style="font-family:Arial,sans-serif;font-size:11pt;color:#222;max-width:640px">` +
+    `<div style="background:${cor};color:#fff;padding:10px 14px;border-bottom:3px solid #c49a3a"><b style="font-family:Georgia,serif;font-size:14pt;letter-spacing:1px">${esc(t)}</b>` +
+    `<div style="font-size:9pt;color:#e8d3a2">Checklist de documentos</div></div>` +
+    `<p style="margin:10px 0 2px;color:${cor}"><b>${esc(D.ato.toUpperCase())}</b></p>` + (D.cliente ? `<p style="margin:0 0 6px">Cliente: ${esc(D.cliente)}</p>` : '') +
+    D.secs.map((s, i) => `<p style="margin:12px 0 4px;background:#eaedf4;border-left:4px solid ${cor};padding:4px 8px;color:${cor}"><b>${i + 1}. ${esc(s.titulo.toUpperCase())}</b></p>` +
+      s.itens.map(it => `<div style="margin:3px 0 3px 8px">☐ ${esc(it)}</div>`).join('')).join('') +
+    `<p style="font-size:9pt;color:#666;font-style:italic;margin-top:12px">${esc(AVISO_CHECKLIST)}</p><p>${esc(D.data)}</p>` +
+    (D.atende ? `<p style="margin:10px 0 0;color:${cor}"><b>${esc(D.atende)}</b></p>` : '') + (D.contato ? `<p style="margin:0;color:#555">${esc(D.contato)}</p>` : '') + '</div>';
+}
+async function copiarChecklist(b) {
+  const txt = checklistTexto(), rotulo = b.textContent;
+  try {
+    if (!window.ClipboardItem) throw 0;
+    await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([txt], { type: 'text/plain' }), 'text/html': new Blob([checklistHTMLCopia()], { type: 'text/html' }) })]);
+    b.textContent = 'Copiado!'; setTimeout(() => b.textContent = rotulo, 1500);
+  } catch { copiar(txt, b); }
+}
+
 /* ------------------------ Por extenso ------------------------ */
 const UN = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze',
   'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
@@ -890,11 +1018,8 @@ function iniciarFerramentas() {
   $('irOrcamento').addEventListener('click', () => Orc.novo({ preco: lerValor($('valor').value), onus: +$('nOnus').value, rural: $('rural').checked }));
 
   ['cModal', 'cImovel', 'cCasados', 'cPJ', 'cProc', 'cCond', 'cMenor'].forEach(id => $(id).addEventListener('change', montarChecklist));
-  $('cCopiar').addEventListener('click', () => {
-    const secs = listaDocumentos($('cModal').value, $('cImovel').value, opcoesChecklist());
-    const txt = [$('cTitulo').textContent, ''].concat(...secs.map(s => [s.titulo.toUpperCase(), ...s.itens.map(i => '[ ] ' + i), ''])).join('\n');
-    copiar(txt, $('cCopiar'));
-  });
+  $('cCopiar').addEventListener('click', () => copiarChecklist($('cCopiar')));
+  $('cPDF').addEventListener('click', () => imprimirChecklist($('cPDF')));
   $('cMinuta').addEventListener('click', () => {
     $('m_modal').value = $('cModal').value; $('m_imovel').value = $('cImovel').value; $('m_cond').checked = $('cCond').checked;
     aoMudarModal(); abrirSub('minuta');

@@ -115,6 +115,7 @@ async function carregarCfg() {
       if (!c.logo) { n.logo = CARTORIO_BUJARU.logo; mudou = true; }
       if (!c.cabecalho || c.cabecalho === CABECALHO_ANTIGO) { n.cabecalho = CARTORIO_BUJARU.cabecalho; mudou = true; }
       if (!c.timbre) { n.timbre = CARTORIO_BUJARU.timbre; mudou = true; }
+      if (c.contato === undefined) { n.contato = CARTORIO_BUJARU.contato; mudou = true; }
       if (!c.endereco || c.endereco === 'Rodovia PA-140, Km 29, Vila Santana, Centro, Bujaru/PA – CEP 68.670-000') { n.endereco = CARTORIO_BUJARU.endereco; mudou = true; }
     } else if (c.cor === '#1f4e79') { n.cor = CARTORIO_NOVO.cor; mudou = true; }
     return n;
@@ -132,6 +133,8 @@ const CARTORIO_BUJARU = {
   // Timbre da minuta (faixa azul, sem rodapé por causa da assinatura eletrônica).
   timbre: 'CARTÓRIO SANTANA\nCartório de Notas e Registro Civil de Pessoas Naturais\nComarca de Bujaru\nMARIA ELISA CORDEIRO DE SANTANA – Tabeliã e Registradora',
   endereco: 'Rodovia PA-140, Km 29, Vila Santana\nCentro, Bujaru/PA – CEP 68.670-000',
+  // Contato de quem atende (vai no fim do checklist impresso e copiado).
+  contato: '(91) 98115-8167 · luis.frazaoviana@gmail.com',
   pasta: 'ESCRITURAS ORGANIZADAS', tabela: 'PA2026', issPct: 5,
   lavrador: 'LUÍS ALBERTO FRAZÃO MODESTO', cargo: 'Tabelião e Registrador Substituto', cargoCurto: 'Tabelião Substituto',
   localTrad: 'neste Distrito, Comarca e Município de Bujaru – PA', localRev: 'neste Distrito, Município e Comarca de Bujaru, Estado do Pará',

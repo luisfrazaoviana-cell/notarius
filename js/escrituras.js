@@ -207,6 +207,7 @@ const Esc = {
         ${campo('dataRecebimento', 'Data do pagamento', 'date')}
         ${campo('valorRecebido', 'Valor recebido (R$)', 'text', 'inputmode="decimal"')}
       </div>
+      ${ehProcuracao(r) ? '' : this.blocoCertidoes(r)}
       <label class="f">Observação</label><textarea id="ed_obs">${esc(r.obs || '')}</textarea>
       <div class="acoes">
         <button class="prim" id="edSalvar">Salvar</button>
@@ -233,9 +234,26 @@ const Esc = {
     });
   },
 
+  // Certidões em nome dos vendedores (aprovado em 24/10/2026): botões para os sites oficiais e o lugar de anotar
+  // nº | data | resultado (uma linha por vendedor, na ordem dos nomes). Vão sozinhas para a minuta.
+  blocoCertidoes(r) {
+    const ce = r.certidoes || {};
+    const ta = (k, rot) => `<label class="f" for="ed_c_${k}">${rot}</label>` +
+      `<label class="chk"><input type="checkbox" id="ed_d_${k}" ${(ce.disp || {})[k] ? 'checked' : ''}> Dispensada pelo comprador (sob responsabilidade dele)</label>` +
+      `<textarea id="ed_c_${k}" class="curto">${esc(ce[k] || '')}</textarea>`;
+    return `<h3>Certidões do vendedor</h3>
+      <div class="hint">Uma linha por vendedor, na ordem dos nomes: <b>nº | data | resultado</b>. Os PDFs vão para 03 - DOCUMENTOS.</div>
+      <div class="acoes" style="margin:6px 0">${SITES_CERTIDOES.map(s => `<a class="btn" href="${s.url}" target="_blank" rel="noopener">${s.nome}</a>`).join('')}</div>
+      ${ta('tj', 'Ações cíveis – TJPA')}${ta('tst', 'CNDT – TST')}${ta('trf', 'Cível – TRF1')}${ta('sefa', 'Dívida ativa tributária e não tributária – SEFA/PA (nº das duas)')}
+      <div class="linha2"><div><label class="f" for="ed_c_cndPJ">Vendedor empresa: CND RFB/PGFN (nº e data)</label><input id="ed_c_cndPJ" type="text" value="${esc(ce.cndPJ || '')}"></div>
+      <div><label class="f" for="ed_c_casExp">Certidões de casamento expedidas em</label><input id="ed_c_casExp" type="text" placeholder="dd/mm/aaaa" value="${esc(ce.casExp || '')}"></div></div>`;
+  },
+
   async salvarDetalhe(id) {
     const r = await Reg.get('escrituras', id);
     const val = k => $('ed_' + k).value.trim();
+    if ($('ed_c_tj')) r.certidoes = { ...Object.fromEntries(['tj', 'tst', 'trf', 'sefa', 'cndPJ', 'casExp'].map(k => [k, $('ed_c_' + k).value.trim()])),
+      disp: Object.fromEntries(['tj', 'tst', 'trf', 'sefa'].map(k => [k, $('ed_d_' + k).checked])) };
     Object.assign(r, {
       natureza: val('natureza'), imovel: val('imovel'), outorgantes: val('outorgantes'), outorgados: val('outorgados'),
       dataLavratura: val('dataLavratura'), selo: val('selo'), livro: val('livro') ? normLivro(val('livro')) : '', folhas: formatarFolhas(val('folhas')), codigo: val('codigo'),

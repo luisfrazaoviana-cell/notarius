@@ -64,58 +64,54 @@ const Orc = {
     if (!this.calc) throw new Error('Informe preço ou valor venal.');
     const nomeInt = $('orcNome').value.trim().toUpperCase();
     if (!nomeInt) throw new Error('Informe o interessado.');
+    return this.pdf({ nome: nomeInt, cpf: $('orcCpf').value.trim(), imovel: $('orcImovel').value.trim(), base: this.calc.base,
+      origem: this.calc.origem, desc: $('orcDesc').value.trim(), total: this.calc.total, data: $('orcData').value });
+  },
+
+  // Desenha a Guia PIX a partir dos dados prontos (também usado para refazer orçamentos antigos no modelo atual).
+  async pdf(o) {
+    const nomeInt = o.nome;
     await Promise.all([carregarScript(LIB.jspdf), carregarScript(LIB.qr)]);
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    const W = 210, M = 20, ct = C();
+    // Margens do timbre modelo 13: 3 cm à esquerda, 2 cm à direita (M = esquerda, MD = direita).
+    const W = 210, M = 30, MD = 20, ct = C(), CX = M + (W - M - MD) / 2;
     const cor = (ct.cor || '#14284b').match(/\w\w/g).map(h => parseInt(h, 16));
-    let y = 18;
-    // Timbre: logo à esquerda e o nome completo do cartório como título.
-    const logo = await logoDataURL();
-    const linhasCab = (ct.cabecalho || ct.nome).split('\n');
-    const xTxt = logo ? M + 26 : W / 2, alinh = logo ? 'left' : 'center';
-    if (logo) doc.addImage(logo, 'PNG', M, y - 4, 22, 22);
-    linhasCab.forEach((l, i) => {
-      if (i === 0) { doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...cor); }
-      else if (i === 1) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(196, 154, 58); }
-      else { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(40); }
-      doc.text(doc.splitTextToSize(l, logo ? W - M - xTxt : W - 2 * M), xTxt, y + 3 + i * 5.5, { align: alinh });
-    });
+    // Timbre modelo 13 (o mesmo das escrituras e do checklist) – nunca o cabeçalho antigo.
+    timbre13PDF(doc, ct, await logoDataURL())();
+    let y = 50;
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(...cor);
+    doc.setFontSize(15); doc.text('GUIA DE PAGAMENTO – PIX', CX, y, { align: 'center' }); y += 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(196, 154, 58);
+    doc.text(doc.splitTextToSize(ct.tabela === 'PA2026' ? 'Conforme Tabela de Emolumentos 2026 dos Serviços Notariais e de Registro do Estado do Pará'
+      : `Conforme ${(CFG.tabelas || {})[ct.tabela]?.nome || 'Tabela de Emolumentos vigente'}`, W - M - MD), CX, y, { align: 'center' }); y += 11;
     doc.setTextColor(0);
-    y = Math.max(y + 22, y + 3 + linhasCab.length * 5.5) + 2;
-    doc.setDrawColor(...cor); doc.setLineWidth(0.7); doc.line(M, y, W - M, y);
-    doc.setDrawColor(196, 154, 58); doc.setLineWidth(0.3); doc.line(M, y + 1.2, W - M, y + 1.2); y += 11;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15); doc.text('GUIA DE PAGAMENTO – PIX', W / 2, y, { align: 'center' }); y += 6;
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-    doc.text(ct.tabela === 'PA2026' ? 'Conforme Tabela de Emolumentos 2026 dos Serviços Notariais e de Registro do Estado do Pará'
-      : `Conforme ${(CFG.tabelas || {})[ct.tabela]?.nome || 'Tabela de Emolumentos vigente'}`, W / 2, y, { align: 'center' }); y += 11;
 
     doc.setFontSize(11);
-    const campo = (rot, val) => { doc.setFont('helvetica', 'bold'); doc.text(rot, M, y); doc.setFont('helvetica', 'normal'); doc.text(doc.splitTextToSize(val, W - 2 * M - 32), M + 32, y); y += 7; };
+    const campo = (rot, val) => { const t = doc.splitTextToSize(val, W - M - MD - 32); doc.setFont('helvetica', 'bold'); doc.text(rot, M, y); doc.setFont('helvetica', 'normal'); doc.text(t, M + 32, y); y += 5 * t.length + 2; };
     campo('Interessado:', nomeInt);
-    if ($('orcCpf').value.trim()) campo('CPF/CNPJ:', $('orcCpf').value.trim());
-    if ($('orcImovel').value.trim()) campo('Imóvel:', $('orcImovel').value.trim().toUpperCase());
+    if (o.cpf) campo('CPF/CNPJ:', o.cpf);
+    if (o.imovel) campo('Imóvel:', o.imovel.toUpperCase());
     y += 4;
 
     // Tabela CUSTAS E EMOLUMENTOS
-    const tw = W - 2 * M;
+    const tw = W - M - MD;
     doc.setFillColor(...cor); doc.rect(M, y, tw, 8, 'F');
-    doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.text('CUSTAS E EMOLUMENTOS', W / 2, y + 5.5, { align: 'center' });
+    doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.text('CUSTAS E EMOLUMENTOS', CX, y + 5.5, { align: 'center' });
     doc.setTextColor(0); y += 8;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-    doc.rect(M, y, tw, 7); doc.text(`Base de Cálculo: R$ ${brl(this.calc.base)} – ${this.calc.origem}`, M + 3, y + 4.8); y += 7;
+    doc.rect(M, y, tw, 7); doc.text(`Base de Cálculo: R$ ${brl(o.base)} – ${o.origem}`, M + 3, y + 4.8); y += 7;
     doc.setFillColor(234, 237, 244); doc.rect(M, y, tw, 7, 'FD');
-    doc.setFont('helvetica', 'bold'); doc.text('DESCRIÇÃO', M + 3, y + 4.8); doc.text('VALOR', W - M - 3, y + 4.8, { align: 'right' }); y += 7;
+    doc.setFont('helvetica', 'bold'); doc.text('DESCRIÇÃO', M + 3, y + 4.8); doc.text('VALOR', W - MD - 3, y + 4.8, { align: 'right' }); y += 7;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
-    const desc = doc.splitTextToSize($('orcDesc').value.trim() || ct.descricaoGuia || 'Escritura Pública', tw - 45);
+    const desc = doc.splitTextToSize(o.desc || ct.descricaoGuia || 'Escritura Pública', tw - 45);
     const h = Math.max(9, desc.length * 5 + 4);
-    doc.rect(M, y, tw, h); doc.text(desc, M + 3, y + 6); doc.text('R$ ' + brl(this.calc.total), W - M - 3, y + 6, { align: 'right' }); y += h;
+    doc.rect(M, y, tw, h); doc.text(desc, M + 3, y + 6); doc.text('R$ ' + brl(o.total), W - MD - 3, y + 6, { align: 'right' }); y += h;
     doc.setFont('helvetica', 'bold'); doc.setFillColor(246, 238, 219); doc.rect(M, y, tw, 9, 'FD');
-    doc.text('TOTAL', M + 3, y + 6); doc.text('R$ ' + brl(this.calc.total), W - M - 3, y + 6, { align: 'right' }); y += 18;
+    doc.text('TOTAL', M + 3, y + 6); doc.text('R$ ' + brl(o.total), W - MD - 3, y + 6, { align: 'right' }); y += 18;
 
     // Dados bancários e QR Code Pix
-    const qrTam = 42, qrX = W - M - qrTam;
+    const qrTam = 42, qrX = W - MD - qrTam;
     doc.setFontSize(11); doc.text('DADOS PARA PAGAMENTO', M, y); y += 6;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
     const yQr = y - 6;
@@ -129,8 +125,14 @@ const Orc = {
       y = Math.max(y, yQr + qrTam + 8);
     }
     y += 10;
-    const [a, m, d] = ($('orcData').value || hojeISO()).split('-').map(Number);
-    doc.setFontSize(11); doc.text(`${ct.cidadeData || ''}${ct.cidadeData ? ', ' : ''}${String(d).padStart(2, '0')} de ${MESES_NOME[m - 1]} de ${a}.`, W / 2, y, { align: 'center' });
+    const [a, m, d] = (o.data || hojeISO()).split('-').map(Number);
+    doc.setFontSize(11); doc.text(`${ct.cidadeData || ''}${ct.cidadeData ? ', ' : ''}${String(d).padStart(2, '0')} de ${MESES_NOME[m - 1]} de ${a}.`, CX, y, { align: 'center' });
+    if (ct.lavrador) {
+      y += 22; doc.setDrawColor(196, 154, 58); doc.setLineWidth(0.3); doc.line(CX - 40, y - 5, CX + 40, y - 5);
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(...cor); doc.text(ct.lavrador.toUpperCase(), CX, y, { align: 'center' });
+      if (ct.cargo) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(60); doc.text(ct.cargo, CX, y + 5, { align: 'center' }); }
+      doc.setTextColor(0);
+    }
     return { blob: doc.output('blob'), nome: `ORÇAMENTO COM QRCODE ${nomePasta(ct.siglaArquivo || ct.nome, 40)} - ${nomePasta(nomeInt, 80)}.pdf` };
   },
 

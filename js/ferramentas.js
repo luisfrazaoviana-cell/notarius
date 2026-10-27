@@ -303,21 +303,17 @@ function dadosChecklist() {
 }
 const AVISO_CHECKLIST = 'Prazos usuais: certidão de matrícula, 30 dias; certidões de registro civil, 90 dias. Traga os documentos originais. A lista pode mudar conforme o caso concreto.';
 
-// Checklist em PDF A4 com o timbre das escrituras (modelo 13): faixa azul de borda a borda, selo, linha dourada.
-// Cada página nova repete o timbre. Itens com quadradinho para marcar à mão.
-async function checklistPDF() {
-  await carregarScript(LIB.jspdf);
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const D = dadosChecklist(), ct = D.ct, logo = await logoDataURL();
-  const W = 210, H = 297, ME = 30, MD = 20, LARG = W - ME - MD;
+// Timbre modelo 13 em PDF A4 (jsPDF, mm): faixa azul de borda a borda, selo, linha dourada. ÚNICO modelo para
+// todo PDF do app (checklist, orçamento...) – nunca voltar ao cabeçalho antigo (pedido do usuário, 27/10/2026).
+// Devolve a função que desenha o timbre (repetir em cada página nova); o texto começa em y = 48 mm.
+function timbre13PDF(doc, ct, logo) {
+  const W = 210, ME = 30, MD = 20;
   const cor = (ct.cor || '#14284b').match(/\w\w/g).map(h => parseInt(h, 16)), OURO = [196, 154, 58];
   const l = (ct.timbre || ct.cabecalho || ct.nome || '').split('\n').map(s => s.trim()).filter(Boolean);
   const [l1 = '', l2 = '', l3 = '', ...resto] = l;
   const tit = resto.join(' · ').split(/\s+[–-]\s+/);
   const direita = [tit[0], tit.slice(1).join(' – '), ...(ct.endereco || '').split('\n')].map(s => (s || '').trim()).filter(Boolean);
-  const TOPO = 48;
-  const timbre = () => {
+  return () => {
     doc.setFillColor(...cor); doc.rect(0, 0, W, 36, 'F');
     doc.setFillColor(...OURO); doc.rect(0, 36, W, 1.1, 'F');
     let x = ME;
@@ -335,6 +331,19 @@ async function checklistPDF() {
     });
     doc.setTextColor(0);
   };
+}
+
+// Checklist em PDF A4 com o timbre das escrituras (modelo 13).
+// Cada página nova repete o timbre. Itens com quadradinho para marcar à mão.
+async function checklistPDF() {
+  await carregarScript(LIB.jspdf);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const D = dadosChecklist(), ct = D.ct, logo = await logoDataURL();
+  const W = 210, H = 297, ME = 30, MD = 20, LARG = W - ME - MD;
+  const cor = (ct.cor || '#14284b').match(/\w\w/g).map(h => parseInt(h, 16)), OURO = [196, 154, 58];
+  const TOPO = 48;
+  const timbre = timbre13PDF(doc, ct, logo);
   timbre();
   let y = TOPO;
   const cabe = h => { if (y + h > H - 15) { doc.addPage(); timbre(); y = TOPO; } };

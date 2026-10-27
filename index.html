@@ -257,6 +257,11 @@
             <select id="m_aGen"><option value="M">Masculino / misto</option><option value="F">Feminino</option></select></div>
           <label class="f" for="m_aQual">Qualificação completa</label>
           <textarea id="m_aQual" style="min-height:110px"></textarea>
+          <fieldset data-modal="cv dacao">
+            <label class="f" for="m_aPresenta">Vendedor empresa: presentado por (redação tradicional; opcional)</label>
+            <input id="m_aPresenta" type="text" placeholder="seu sócio administrador">
+          </fieldset>
+          <div class="hint">Empresa: nos nomes, "EMPRESA LTDA | P/P NOME DO SÓCIO | Vendedora" faz a assinatura em três linhas. Se a qualificação já tiver o "doravante denominada", ela fica como foi digitada.</div>
 
           <fieldset data-modal="cv dacao procuracao">
             <h3 id="lblB">Compradores</h3>
@@ -266,6 +271,33 @@
             <select id="m_bGen"><option value="M">Masculino / misto</option><option value="F">Feminino</option></select>
             <label class="f" for="m_bQual">Qualificação completa</label>
             <textarea id="m_bQual" style="min-height:110px"></textarea>
+          </fieldset>
+
+          <fieldset data-modal="cv">
+            <h3>Venda ao cessionário</h3>
+            <div class="checks"><label><input type="checkbox" id="m_cessao"> O comprador é cessionário (o vendedor continua dono no registro e o comprador comprou os direitos de outra pessoa)</label></div>
+            <div id="boxCessao" class="hidden">
+              <label class="f" for="m_cesOrigem">O que o vendedor declara (continua depois de "declara que")</label>
+              <textarea id="m_cesOrigem" placeholder="em fevereiro de 2002, alienou o imóvel, por permuta, a **NOME**, inscrito no CPF/MF sob o nº ..., de quem recebeu integralmente a contraprestação, conforme Termo de Quitação de ..."></textarea>
+              <label class="f" for="m_cesCedentes">Quem cedeu (começo da frase; "Os ..." = cederam, "O ..." = cedeu)</label>
+              <textarea id="m_cesCedentes" class="curto" placeholder="Os permutantes, representados por sua procuradora **NOME**, inscrita no CPF/MF sob o nº ..., nos termos da **Procuração Pública** lavrada em ..."></textarea>
+              <label class="f" for="m_cesObjExtra">Complemento do objeto da cessão (opcional)</label>
+              <input id="m_cesObjExtra" type="text" placeholder="inclusive as Vagas de Garagem nºs 07 e 08">
+              <div class="linha2">
+                <div><label class="f" for="m_cesInstr">Instrumento da cessão</label><input id="m_cesInstr" type="text" placeholder="Contrato Particular de Cessão e Transferência de Direitos e Obrigações"></div>
+                <div><label class="f" for="m_cesData">Data da cessão</label><input id="m_cesData" type="text" placeholder="dd/mm/aaaa"></div>
+              </div>
+              <label class="f" for="m_cesValor">Valor da cessão (R$)</label>
+              <input id="m_cesValor" type="text" inputmode="decimal">
+              <label class="f" for="m_cesNegs">Negócios que não vão a registro</label>
+              <input id="m_cesNegs" type="text" placeholder="a permuta e a cessão de direitos">
+              <div class="linha2">
+                <div><label class="f" for="m_cesPagoA">O preço foi pago</label><input id="m_cesPagoA" type="text" placeholder="aos cedentes"></div>
+                <div><label class="f" for="m_cesQuit">O vendedor dá quitação porque recebeu</label><input id="m_cesQuit" type="text" placeholder="sua contraprestação pela permuta descrita no item {{cessao}}"></div>
+              </div>
+              <label class="f" for="m_cesDocs">Documentos arquivados (redação tradicional)</label>
+              <input id="m_cesDocs" type="text" placeholder="O Termo de Quitação, o Contrato de Cessão e o Recibo">
+            </div>
           </fieldset>
 
           <fieldset data-modal="procuracao">
@@ -338,10 +370,8 @@
           <h3>Imóvel</h3>
           <label class="f" for="m_local">Localização (só endereço – Lei 7.433/85)</label>
           <textarea id="m_local"></textarea>
-          <div class="linha2">
-            <div><label class="f" for="m_matricula">Matrícula nº</label><input id="m_matricula" type="text"></div>
-            <div><label class="f" for="m_municipio">Município/UF</label><input id="m_municipio" type="text" placeholder="Bujaru/PA"></div>
-          </div>
+          <label class="f" for="m_matricula">Matrícula nº (mais de um imóvel: uma por linha, "número | descrição")</label>
+          <textarea id="m_matricula" class="curto" placeholder="310.865 | apartamento&#10;310.888 | vaga de garagem nº 07"></textarea>
           <label class="f" for="m_ri">Ofício de Registro de Imóveis</label>
           <input id="m_ri" type="text" placeholder="Cartório do Único Ofício de Bujaru/PA">
           <label class="f" for="m_riData">Certidão de inteiro teor expedida em (vale 30 dias – art. 259, III, do CNSNR)</label>
@@ -351,8 +381,20 @@
           <div class="checks">
             <label><input type="checkbox" id="m_indisp"> Há indisponibilidade entre os ônus</label>
             <label><input type="checkbox" id="m_cond"> Imóvel em condomínio</label>
+            <label><input type="checkbox" id="m_afor"> Imóvel aforado (só o domínio útil)</label>
+          </div>
+          <div id="boxAfor" class="hidden">
+            <label class="f" for="m_aforSenhorio">Senhorio direto (dono do domínio direto)</label>
+            <input id="m_aforSenhorio" type="text" placeholder="Município de Belém / União">
+            <label class="f" for="m_aforCert">Certidão de foro e laudêmio</label>
+            <input id="m_aforCert" type="text" placeholder="Certidão de Quitação de Foro e Laudêmio nº ..., expedida em ...">
           </div>
           <fieldset data-imovel="urbano">
+            <div class="linha2">
+              <div><label class="f" for="m_munPreset">Município (preenche o cadastro)</label>
+                <select id="m_munPreset"><option value="">Outro (digitar)</option><option value="ananindeua">Ananindeua (CIF)</option><option value="belem">Belém (Inscrição Imobiliária)</option></select></div>
+              <div><label class="f" for="m_municipio">Município/UF</label><input id="m_municipio" type="text" placeholder="Bujaru/PA"></div>
+            </div>
             <div class="linha2">
               <div><label class="f" for="m_cadSigla">Cadastro (sigla)</label><input id="m_cadSigla" type="text" value="CIF"></div>
               <div><label class="f" for="m_cadNum">Nº do cadastro</label><input id="m_cadNum" type="text"></div>
@@ -364,6 +406,10 @@
             <div class="hint">A sigla CIF é de Ananindeua; em outro município, ajuste o nome do cadastro.</div>
             <label class="f" for="m_cib">CIB – Cadastro Imobiliário Brasileiro nº (IN RFB 2.275/2025)</label>
             <input id="m_cib" type="text">
+            <label class="f" for="m_cadQual">Qual imóvel é este cadastro (opcional)</label>
+            <input id="m_cadQual" type="text" placeholder="o apartamento">
+            <label class="f" for="m_cadExtra">Outros cadastros (um por linha: quem | nº | CIB | valor venal)</label>
+            <textarea id="m_cadExtra" class="curto" placeholder="as vagas de garagem | 008/... | 123 | 20.000,00"></textarea>
           </fieldset>
           <fieldset data-imovel="rural">
             <div class="linha2">
@@ -439,11 +485,16 @@
           <fieldset data-modal="procuracao"><h3>Selo</h3></fieldset>
           <label class="f" for="m_selo">Selo</label>
           <input id="m_selo" type="text">
+
+          <h3>Ajustar o texto de cada item</h3>
+          <div class="hint">Para o caso especial: abra o item e escreva o texto próprio (substitui o gerado), acrescente ao fim ou crie um item novo logo depois. Use **negrito**, __sublinhado__ e [[vermelho]]; {{objeto}}, {{titulo}} e {{cessao}} viram o número do item. Fica guardado na escritura.</div>
+          <div id="mItens" class="ajustes"></div>
         </div>
 
         <div class="card">
           <div class="acoes no-print" style="margin:0 0 16px">
             <button type="button" class="prim" id="mSalvar">Salvar na pasta da escritura</button>
+            <button type="button" id="mGuardar">Guardar dados na escritura</button>
             <button type="button" id="mWord">Baixar Word (.doc)</button>
             <button type="button" id="mCopiar">Copiar texto</button>
             <button type="button" onclick="window.print()">Imprimir</button>

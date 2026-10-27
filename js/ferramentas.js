@@ -516,8 +516,9 @@ function romano(n) {
 }
 
 // Grupo de partes, com concordância de gênero e número.
+// "NOME | papel" ou "EMPRESA | P/P NOME | Vendedora": cada parte depois do nome vira uma linha da assinatura.
 function grupo(idNomes, gen, forcarPlural) {
-  const pessoas = linhas(idNomes).map(l => { const [nome, papel] = l.split('|').map(s => s.trim()); return { nome, papel }; });
+  const pessoas = linhas(idNomes).map(l => { const [nome, ...pap] = l.split('|').map(s => s.trim()); return { nome, papel: pap.filter(Boolean).join('\n') || undefined }; });
   // Grupo marcado "Masculino / misto" mas todas as pessoas são mulheres pela qualificação: o texto concorda no feminino.
   const qual = { m_aNomes: 'm_aQual', m_bNomes: 'm_bQual' }[idNomes];
   if (gen === 'M' && qual && pessoas.length && pessoas.every(p => generoPessoa(p.nome, v(qual), 'M') === 'F')) gen = 'F';
@@ -556,7 +557,69 @@ function contexto() {
   if (m === 'procuracao') { c.A = grupo('m_aNomes', v('m_aGen')); c.rA = 'MANDANTE'; c.B = grupo('m_bNomes', v('m_bGen')); c.rB = 'MANDATÁRIO'; }
   c.prop = m === 'inventario' ? [c.Fal, c.rFal] : [c.A, c.rA];
   c.adq = m === 'cv' || m === 'dacao' ? [c.B, c.rB] : [c.A, c.rA];
+  // Matrículas: uma por linha, "número | descrição". Mais de uma = texto no plural ("os imóveis").
+  const ms = linhas('m_matricula').map(l => { const [n, d] = l.split('|').map(s => s.trim()); return { n, d }; });
+  c.im = { ms, pl: ms.length > 1 };
+  c.ces = m === 'cv' && $('m_cessao') && $('m_cessao').checked; // venda ao cessionário (modelo da 137)
+  c.pres = v('m_aPresenta') && (m === 'cv' || m === 'dacao') ? `, por ${v('m_aPresenta')},` : ''; // empresa: "por seu sócio administrador"
   return c;
+}
+// Palavra no singular ou no plural conforme o número de imóveis.
+const ip = (c, s, p) => c.im.pl ? p : s;
+function textoMatriculas(c) {
+  const ms = c.im.ms;
+  if (ms.length <= 1) return negrito('Matrícula nº', ms[0] && ms[0].n, 'número da matrícula') + (ms[0] && ms[0].d ? ` (${ms[0].d})` : '');
+  const it = ms.map((m, i) => `**${i ? '' : 'Matrículas nºs '}${m.n}**` + (m.d ? ` (${m.d})` : ''));
+  return it.slice(0, -1).join(', ') + ' e ' + it[it.length - 1];
+}
+// Imóvel aforado (terreno de marinha, foro municipal etc.): só o domínio útil é objeto da escritura.
+function textoAforamento(c) {
+  if (!$('m_afor') || !$('m_afor').checked) return '';
+  const s = v('m_aforSenhorio'), senh = s ? (/^Uni[aã]o\b/i.test(s) ? 'à ' : 'ao ') + s : 'ao [[senhorio direto xxx]]';
+  const cert = F('m_aforCert', 'certidão de quitação de foro e laudêmio');
+  if ($('m_cond').checked) return c.trad
+    ? ` **OBSERVAÇÃO – DOMÍNIO ÚTIL:** As frações ideais vinculadas às unidades correspondem ao domínio útil do terreno onde está edificado o empreendimento, pertencendo o domínio direto ${senh}, conforme ${cert}.`
+    : ` As frações ideais vinculadas às unidades correspondem ao domínio útil do terreno do empreendimento; o domínio direto pertence ${senh}, conforme ${cert}.`;
+  return c.trad
+    ? ` **OBSERVAÇÃO – DOMÍNIO ÚTIL:** ${ip(c, 'O imóvel é foreiro', 'Os imóveis são foreiros')}, correspondendo o objeto desta escritura ao domínio útil, pertencendo o domínio direto ${senh}, conforme ${cert}.`
+    : ` ${ip(c, 'O imóvel é foreiro', 'Os imóveis são foreiros')}: o objeto desta escritura é o domínio útil, e o domínio direto pertence ${senh}, conforme ${cert}.`;
+}
+// Cadastro municipal por município (preenche os campos; o ITBI de Belém tem texto próprio, aprovado na minuta 137).
+const MUNICIPIOS = {
+  ananindeua: { mun: 'Ananindeua/PA', sigla: 'CIF', nome: 'Certidão Imobiliária Fiscal – CIF', orgao: 'Secretaria Municipal de Gestão Fazendária de Ananindeua/PA' },
+  belem: { mun: 'Belém/PA', sigla: 'Inscrição Imobiliária', nome: 'Certidão de Cadastro Imobiliário', orgao: 'Departamento de Tributos Imobiliários – DETI da Secretaria Municipal de Finanças de Belém/PA',
+    itbi: (G, X, trad) => trad
+      ? `, sendo ${vb(G, 'contribuinte', 'contribuintes')} ${art.o(G)} ${X}, nos termos do art. 7º, I, do Decreto Municipal nº 67.738/2011, que regulamenta a Lei Municipal nº 8.792/2010, com base de cálculo apurada na forma do art. 8º do mesmo Decreto, devendo a Declaração de Transmissão de Bens Imóveis – DTBI e o recolhimento ser realizados antes do registro, nos termos do art. 2º do Decreto Municipal nº 92.480/2018`
+      : ` ${vb(G, 'O contribuinte é', 'Os contribuintes são')} ${art.o(G)} ${X}, nos termos do art. 7º, I, do Decreto Municipal nº 67.738/2011, que regulamenta a Lei Municipal nº 8.792/2010; a base de cálculo é apurada na forma do art. 8º do mesmo Decreto; e a Declaração de Transmissão de Bens Imóveis – DTBI e o recolhimento devem ser realizados antes do registro, nos termos do art. 2º do Decreto Municipal nº 92.480/2018.` }
+};
+// Sujeito da frase do cadastro ("o apartamento", "as vagas de garagem"): concordância pelo artigo digitado.
+function sujeitoCadastro(t) {
+  const pl = /^(os|as)\s/i.test(t), f = /^(a|as)\s/i.test(t);
+  return { t: cap(t), est: pl ? 'estão' : 'está', cad: pl ? (f ? 'cadastradas' : 'cadastrados') : (f ? 'cadastrada' : 'cadastrado') };
+}
+// Venda ao cessionário: textos da minuta 137 (aprovada em 27/10/2026), com os dados do caso.
+function dadosCessao(c) {
+  const ced = v('m_cesCedentes') || '[[cedentes: nomes e CPF xxx]]';
+  const negs = v('m_cesNegs') || 'o negócio original e a cessão de direitos';
+  return {
+    // "declara que, em 2002, alienou..." – o texto pode começar com vírgula
+    origem: (/^,/.test(v('m_cesOrigem')) ? '' : ' ') + (v('m_cesOrigem') || '[[o que o vendedor declara sobre a primeira alienação: data, negócio, adquirentes e quitação xxx]]'),
+    ced, cederam: /^(o|a)\s/i.test(ced) ? 'cedeu' : 'cederam', virg: ced.includes(',') ? ',' : '',
+    obj: v('m_cesObjExtra') ? ', ' + v('m_cesObjExtra') : '',
+    instr: v('m_cesInstr') || '[[instrumento da cessão xxx]]', data: F('m_cesData', 'data da cessão'), valor: valorB('m_cesValor', 'valor da cessão'),
+    negs, fem: /^a\s/i.test(negs), pagoA: v('m_cesPagoA') || 'aos cedentes',
+    quit: v('m_cesQuit') || 'integralmente o preço do negócio descrito no item {{cessao}}', docs: v('m_cesDocs')
+  };
+}
+function itCessao(c) {
+  const { A, B } = c, V = R([A, c.rA]), Cp = R([B, c.rB]), d = dadosCessao(c);
+  const cess = w(B, 'cessionário', 'cessionária', 'cessionários', 'cessionárias'), tit = vb(A, 'titular registral', 'titulares registrais');
+  const sobre = ip(c, 'o imóvel', 'os imóveis');
+  if (c.trad) return { k: 'cessao', tt: 'ORIGEM DOS DIREITOS ' + w(B, 'DO', 'DA', 'DOS', 'DAS') + ' ' + nome(c.rB, B), x:
+    `${cap(art.o(A))} ${V}${c.pres} ${vb(A, 'declara', 'declaram')} que${d.origem}. Posteriormente, ${d.ced.charAt(0).toLowerCase() + d.ced.slice(1)}${d.virg} ${d.cederam} ${art.ao(B)} ${Cp} todos os direitos sobre ${sobre}${d.obj}, por meio do **${d.instr}** datado de ${d.data}, pelo valor de ${d.valor}. Em razão da referida cessão, ${art.o(A)} ${V}, ${tit}, ${vb(A, 'outorga', 'outorgam')} a presente escritura diretamente ${art.ao(B)} ${Cp}, na qualidade de ${cess}. ` +
+    (d.docs ? `${d.docs} ficam arquivados em classificador próprio desta Serventia.` : 'Os instrumentos mencionados neste item ficam arquivados em classificador próprio desta Serventia.') };
+  return { k: 'cessao', tr: 'DA ORIGEM DOS DIREITOS ' + w(B, 'DO', 'DA', 'DOS', 'DAS') + ' ' + nome(c.rB, B), x:
+    `${cap(art.o(A))} ${V} ${vb(A, 'declara', 'declaram')} que${d.origem}. ${d.ced}${d.virg} ${d.cederam} ${art.ao(B)} ${Cp} todos os direitos sobre ${sobre}${d.obj}, pelo **${d.instr}** de ${d.data}, pelo valor de ${d.valor}. Por isso, ${art.o(A)} ${V}, ${tit}, ${vb(A, 'outorga', 'outorgam')} esta escritura diretamente ${art.ao(B)} ${Cp}, na qualidade de ${cess}.` };
 }
 
 /* Itens comuns aos dois modelos */
@@ -574,9 +637,11 @@ const temCNPJ = id => /CNPJ/i.test(v(id));
 function itQualificacao(c, G, base, lado) {
   const outorg = lado === 'A' ? w(G, 'OUTORGANTE', 'OUTORGANTE', 'OUTORGANTES', 'OUTORGANTES') : w(G, 'OUTORGADO', 'OUTORGADA', 'OUTORGADOS', 'OUTORGADAS');
   const rot = nome(base, G), id = lado === 'A' ? 'm_aQual' : 'm_bQual';
+  // Qualificação que já traz o "doravante denominada" no meio (empresa presentada por sócio) fica como foi digitada.
+  const q = v(id), jaDen = /doravante\s+denominad/i.test(q);
   return {
     tt: `${outorg} / ${rot}`, tr: `${w(G, 'DO', 'DA', 'DOS', 'DAS')} ${outorg} ${rot}`,
-    x: `${F(id, 'qualificação completa')}${pendenciasQual(v(id))}, doravante ${w(G, 'denominado', 'denominada', 'denominados', 'denominadas')} **${rot}**.` + (c.trad ? ' Documentos arquivados em classificador próprio desta Serventia.' : '')
+    x: (jaDen ? q.replace(/[.\s]+$/, '') + pendenciasQual(q) + '.' : `${F(id, 'qualificação completa')}${pendenciasQual(q)}, doravante ${w(G, 'denominado', 'denominada', 'denominados', 'denominadas')} **${rot}**.`) + (c.trad ? ' Documentos arquivados em classificador próprio desta Serventia.' : '')
   };
 }
 function itIdentidade(c) {
@@ -588,13 +653,13 @@ function itObjeto(c) {
   const loc = v('m_local');
   const q = loc ? `//“${loc}”//` : '“[[localização do imóvel xxx]]”';
   return c.trad
-    ? { k: 'objeto', tt: 'OBJETO', x: `O imóvel objeto desta escritura possui a seguinte qualificação objetiva: ${q}. A qualificação objetiva foi descrita conforme consta da Certidão de Inteiro Teor da matrícula do imóvel, indicada no item seguinte, nos termos do §1º, do art. 2, da Lei 7.433/85.` }
-    : { k: 'objeto', tr: 'DO IMÓVEL', x: `O objeto desta escritura é o seguinte imóvel: ${q}. A descrição corresponde à certidão de inteiro teor da matrícula indicada no item seguinte, na forma do art. 2º, § 1º, da Lei nº 7.433/1985.` };
+    ? { k: 'objeto', tt: 'OBJETO', x: `${ip(c, 'O imóvel objeto desta escritura possui', 'Os imóveis objeto desta escritura possuem')} a seguinte qualificação objetiva: ${q}. A qualificação objetiva foi descrita conforme consta ${ip(c, 'da Certidão de Inteiro Teor da matrícula do imóvel, indicada', 'das Certidões de Inteiro Teor das matrículas dos imóveis, indicadas')} no item seguinte, nos termos do §1º, do art. 2, da Lei 7.433/85.` }
+    : { k: 'objeto', tr: ip(c, 'DO IMÓVEL', 'DOS IMÓVEIS'), x: `${ip(c, 'O objeto desta escritura é o seguinte imóvel', 'O objeto desta escritura são os seguintes imóveis')}: ${q}. A descrição corresponde ${ip(c, 'à certidão de inteiro teor da matrícula indicada', 'às certidões de inteiro teor das matrículas indicadas')} no item seguinte, na forma do art. 2º, § 1º, da Lei nº 7.433/1985.` };
 }
 function itTitulo(c) {
   const [G, base] = c.prop, ri = F('m_ri', 'Ofício de Registro de Imóveis');
   const riD = F('m_riData', 'data de expedição da certidão de inteiro teor');
-  const mat = negrito('Matrícula nº', v('m_matricula'), 'número da matrícula');
+  const mat = textoMatriculas(c), afor = textoAforamento(c);
   const onus = linhas('m_onus'), L = i => String.fromCharCode((c.trad ? 65 : 97) + i);
   let obs = '';
   if (onus.length) {
@@ -603,25 +668,37 @@ function itTitulo(c) {
       ? ' As **PARTES** foram expressamente cientificadas da existência das referidas ordens de indisponibilidade, consignando-se a circunstância neste ato, nos termos do parágrafo único do art. 320-F do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023), estando cientes de que o registro da presente escritura dependerá do prévio cancelamento das indisponibilidades acima descritas.'
       : ' As partes foram expressamente cientificadas da existência dessas ordens de indisponibilidade, circunstância que consigno neste ato, nos termos do parágrafo único do art. 320-F do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023), e estão cientes de que o registro desta escritura depende do prévio cancelamento dessas indisponibilidades.';
   }
+  const arq = ip(c, ' Documento arquivado', ' Documentos arquivados') + ' em classificador próprio desta Serventia.';
   if (c.trad) return { k: 'titulo', tt: 'TÍTULO AQUISITIVO E DISPONIBILIDADE DO BEM',
-    x: `O imóvel qualificado acima foi havido nos termos descritos da Certidão de Inteiro Teor expedida pelo ${ri} em ${riD}, devidamente registrado sob a ${mat}, Livro 02 – Registro Geral` +
-      (onus.length ? '. Documento arquivado em classificador próprio desta Serventia.' + obs
-        : ', estando livre e desimpedido de quaisquer ônus reais, pessoais e reipersecutórios. Documento arquivado em classificador próprio desta Serventia.') };
+    x: `${ip(c, 'O imóvel qualificado acima foi havido nos termos descritos da Certidão de Inteiro Teor expedida', 'Os imóveis qualificados acima foram havidos nos termos descritos das Certidões de Inteiro Teor expedidas')} pelo ${ri} em ${riD}, devidamente ${ip(c, 'registrado sob a', 'registrados sob as')} ${mat}, Livro 02 – Registro Geral` +
+      (onus.length ? '.' + arq + obs + afor
+        : `, estando ${ip(c, 'livre e desimpedido', 'livres e desimpedidos')} de quaisquer ônus reais, pessoais e reipersecutórios.` + afor + arq) };
   const ser = c.m === 'inventario' ? vb(G, 'era', 'eram') : vb(G, 'é', 'são');
+  // Venda ao cessionário: o vendedor é "titular" (já alienou os direitos; continua dono no registro).
+  const dono = c.ces ? vb(G, 'titular', 'titulares') : w(G, 'proprietário', 'proprietária', 'proprietários', 'proprietárias');
   return { k: 'titulo', tr: 'DO TÍTULO AQUISITIVO E DA DISPONIBILIDADE',
-    x: `${cap(art.o(G))} ${R([G, base])} ${ser} ${w(G, 'proprietário', 'proprietária', 'proprietários', 'proprietárias')} do imóvel, registrado sob a ${mat}, Livro 2 – Registro Geral, do ${ri}, conforme certidão de inteiro teor expedida em ${riD}.` +
-      (onus.length ? obs : ' O imóvel encontra-se livre e desembaraçado de quaisquer ônus reais e de ações reais ou pessoais reipersecutórias.') };
+    x: `${cap(art.o(G))} ${R([G, base])} ${ser} ${dono} ${ip(c, 'do imóvel, registrado sob a', 'dos imóveis, registrados sob as')} ${mat}, Livro 2 – Registro Geral, do ${ri}, conforme ${ip(c, 'certidão de inteiro teor expedida', 'certidões de inteiro teor expedidas')} em ${riD}.` +
+      (onus.length ? obs : ` ${ip(c, 'O imóvel encontra-se livre e desembaraçado', 'Os imóveis encontram-se livres e desembaraçados')} de quaisquer ônus reais e de ações reais ou pessoais reipersecutórias.`) + afor };
 }
 function itCadastro(c) {
   const venal = valorB('m_venal', 'valor venal');
   if (!c.rural) {
     const sig = F('m_cadSigla', 'sigla do cadastro'), num = F('m_cadNum', 'número do cadastro'), mun = F('m_municipio', 'município/UF');
     const doc = F('m_cadNome', 'nome do documento fiscal'), org = F('m_cadOrgao', 'órgão expedidor');
+    // "sob o CIF" / "sob a Inscrição Imobiliária"; "pela Secretaria" / "pelo Departamento".
+    const aS = /^(inscri|matr)/i.test(v('m_cadSigla')) ? 'a' : 'o';
+    const pOrg = /^(departamento|setor|servi[cç]o|instituto|n[uú]cleo|centro)/i.test(v('m_cadOrgao')) ? 'pelo' : 'pela';
     // CIB obrigatório nos atos notariais (IN RFB 2.275/2025, art. 5º; LC 214/2025, art. 266) – aprovado em 24/10/2026.
     const cib = `no **Cadastro Imobiliário Brasileiro – CIB** sob o nº ${F('m_cib', 'número do CIB')}`;
+    const S = sujeitoCadastro(v('m_cadQual') || ip(c, 'o imóvel', 'os imóveis'));
+    // Outros cadastros (ex.: vagas de garagem): uma linha por cadastro, "quem | nº | CIB | valor venal".
+    const extras = linhas('m_cadExtra').map(l => {
+      const [quem, n, cb, vv] = l.split('|').map(s => (s || '').trim()), E = sujeitoCadastro(quem || 'o outro imóvel'), cv = lerValor(vv || '');
+      return ` ${E.t} ${E.est} ${E.cad} sob ${aS} ${sig} nº ${n || '[[número do cadastro xxx]]'} e no CIB sob o nº ${cb || '[[número do CIB xxx]]'}, com ${c.trad ? 'o ' : ''}valor venal de ${cv === null ? '**R$** [[valor venal xxx]]' : `**R$ ${brl(cv)} (${extensoReais(cv)})**`}.`;
+    }).join('');
     return c.trad
-      ? { tt: 'CADASTRO FISCAL', x: `O imóvel objeto desta Escritura está devidamente cadastrado junto a Prefeitura Municipal de ${mun}, sob o ${sig} nº ${num}, e ${cib}, com o valor venal de ${venal}, conforme ${doc}, expedida pela ${org}. Documentos arquivados em classificador próprio desta Serventia.` }
-      : { tr: 'DO CADASTRO FISCAL', x: `O imóvel está cadastrado na Prefeitura Municipal de ${mun} sob o ${sig} nº ${num} e ${cib}, com valor venal de ${venal}, conforme ${doc} emitida pela ${org}.` };
+      ? { tt: 'CADASTRO FISCAL', x: `${S.t} objeto desta Escritura ${S.est} devidamente ${S.cad} junto à Prefeitura Municipal de ${mun}, sob ${aS} ${sig} nº ${num}, e ${cib}, com o valor venal de ${venal}, conforme ${doc}, expedida ${pOrg} ${org}.${extras} Documentos arquivados em classificador próprio desta Serventia.` }
+      : { tr: 'DO CADASTRO FISCAL', x: `${S.t} ${S.est} ${S.cad} na Prefeitura Municipal de ${mun} sob ${aS} ${sig} nº ${num} e ${cib}, com valor venal de ${venal}, conforme ${doc} emitida ${pOrg} ${org}.${extras}` };
   }
   const t = `no Instituto Nacional de Colonização e Reforma Agrária – INCRA, conforme **Certificado de Cadastro de Imóvel Rural – CCIR** nº ${F('m_ccir', 'número do CCIR')}, quitado; na Receita Federal do Brasil, sob o **Cadastro Imobiliário Brasileiro – CIB/NIRF** nº ${F('m_nirf', 'número do CIB/NIRF')}, com **Certidão Negativa de Débitos relativos ao Imposto sobre a Propriedade Territorial Rural – ITR** nº ${F('m_itr', 'número da certidão negativa do ITR')}, nos termos do art. 22, §§ 1º e 2º, da Lei nº 4.947/1966 e do art. 21 da Lei nº 9.393/1996; e no **Cadastro Ambiental Rural – CAR** sob o nº ${F('m_car', 'número do CAR')}, nos termos da Lei nº 12.651/2012, com valor atribuído de ${venal}`;
   return c.trad
@@ -632,7 +709,18 @@ function itImposto(c) {
   const [G, base] = c.adq, op = v('m_imp');
   const tt = 'IMPOSTO', tr = 'DO IMPOSTO DE TRANSMISSÃO';
   if (op === 'nao_incide') return { tt, tr, x: 'Não incide imposto de transmissão sobre o presente ato, por não haver transmissão onerosa nem excesso de meação.' };
-  if (op === 'pendente') return { tt, tr, x: `${cap(art.o(G))} ${R([G, base])} ${vb(G, 'declara', 'declaram')} que se ${vb(G, 'responsabiliza', 'responsabilizam')} em apresentar o comprovante de recolhimento do Imposto de Transmissão de Bens Imóveis – ITBI ao Serviço de Registro de Imóveis competente, quando do registro da presente Escritura, nos termos do inc. I, do art. 35, da Lei nº 5.172/66, bem como nos termos do art. 1.227, do Código Civil.` };
+  if (op === 'pendente') {
+    let x = `${cap(art.o(G))} ${R([G, base])} ${vb(G, 'declara', 'declaram')} que se ${vb(G, 'responsabiliza', 'responsabilizam')} em apresentar o comprovante de recolhimento do Imposto de Transmissão de Bens Imóveis – ITBI ao Serviço de Registro de Imóveis competente, quando do registro da presente Escritura, nos termos do inc. I, do art. 35, da Lei nº 5.172/66, bem como nos termos do art. 1.227, do Código Civil.`;
+    // ITBI no município (Belém) e, na venda ao cessionário, só sobre esta transmissão (textos da minuta 137).
+    const mun = (c.m === 'cv' || c.m === 'dacao') && MUNICIPIOS[v('m_munPreset')], itbiMun = mun && mun.itbi ? mun.itbi : null;
+    if (c.ces) {
+      const d = dadosCessao(c), [GA, bA] = c.prop;
+      x += ` O ITBI devido em razão deste ato é exclusivamente o incidente sobre a transmissão ${art.do(GA)} ${R([GA, bA])} ${art.ao(G)} ${R([G, base])}, objeto desta escritura` +
+        (itbiMun && c.trad ? itbiMun(G, R([G, base]), true) + '.' : '.' + (itbiMun ? itbiMun(G, R([G, base]), false) : '')) +
+        ` ${cap(d.negs)} ${d.fem ? 'descritas' : 'descritos'} no ${c.trad ? 'Item' : 'item'} {{cessao}} não são objeto deste título nem do seu registro.`;
+    } else if (itbiMun) x += itbiMun(G, R([G, base]), false);
+    return { tt, tr, x };
+  }
   const val = valorB('m_impValor', 'valor do ITBI'), bc = valorB('m_impBase', 'base de cálculo'), docs = F('m_impDocs', 'documentos do ITBI (DAM e comprovante)');
   return c.trad
     ? { tt, x: `Foi devidamente recolhido aos cofres da municipalidade competente o Imposto de Transmissão de Bens Imóveis – ITBI, no valor de ${val}, com base de cálculo no valor de ${bc}, nos termos dos seguintes documentos: ${docs}. Documentos arquivados em classificador próprio desta Serventia.` }
@@ -708,16 +796,16 @@ function itDeclaracoes(c, primeira) {
   const lst = [];
   lst.push(primeira || (c.trad
     ? `${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')}, sob pena de responsabilidade civil e penal, que não existem outras ações reais, pessoais ou reipersecutórias, bem como não existem outros ônus reais que possam macular ou tornar ineficaz a presente escritura` + (temOnus ? ', exceto os ônus citados no Item {{titulo}}' : '')
-    : `${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')} que não existem outras ações reais ou pessoais reipersecutórias relativas ao imóvel nem outros ônus reais que o gravem` + (temOnus ? ', ressalvados os ônus citados no item {{titulo}}' : '')));
+    : `${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')} que não existem outras ações reais ou pessoais reipersecutórias relativas ${ip(c, 'ao imóvel', 'aos imóveis')} nem outros ônus reais que ${ip(c, 'o', 'os')} gravem` + (temOnus ? ', ressalvados os ônus citados no item {{titulo}}' : '')));
   lst.push(c.trad
     ? 'as **PARTES** declaram que não são pessoas expostas politicamente, atualmente ou nos últimos 05 (cinco) anos, não são familiares de pessoas expostas politicamente, bem como não são colaboradoras estreitas de pessoas expostas politicamente, declarando, ainda, para todos os fins de direito que, os dados constantes desta escritura são **VERDADEIROS**, ciente que quaisquer inconsistências podem trazer as sanções expostas na lei, nos termos do art. 145, §6º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023)'
     : 'as partes declaram que não são, nem foram nos últimos cinco anos, pessoas expostas politicamente, e que não são familiares nem estreitos colaboradores de pessoas nessa condição, nos termos do art. 145, § 6º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023)');
-  if ($('m_cond').checked) lst.push(`${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')}, para fins de prova de quitação, que inexistem débitos condominiais ${c.trad ? 'incidentes sobre o referido imóvel, nos termos do §2º, do art. 2º, da Lei 7.433/85' : 'relativos ao imóvel (art. 2º, § 2º, da Lei nº 7.433/1985)'}`);
+  if ($('m_cond').checked) lst.push(`${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')}, para fins de prova de quitação, que inexistem débitos condominiais ${c.trad ? `incidentes sobre ${ip(c, 'o referido imóvel', 'os referidos imóveis')}, nos termos do §2º, do art. 2º, da Lei 7.433/85` : `relativos ${ip(c, 'ao imóvel', 'aos imóveis')} (art. 2º, § 2º, da Lei nº 7.433/1985)`}`);
   // Aprovados em 24/10/2026: alienante pessoa física declara que não é empregador (art. 262, I, do CNSNR) e quem se
   // declarou casado ou divorciado confirma que a certidão (até 90 dias) segue inalterada (art. 261, parágrafo único).
   if ((c.m === 'cv' || c.m === 'dacao') && !temCNPJ('m_aQual'))
     lst.push(`${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')}, sob as penas da lei, que não ${vb(G, 'é', 'são')} ${w(G, 'empregador nem contribuinte individual empregador', 'empregadora nem contribuinte individual empregadora', 'empregadores nem contribuintes individuais empregadores', 'empregadoras nem contribuintes individuais empregadoras')}, ficando dispensada a apresentação de certidão negativa de débito para com o INSS, nos termos do art. 262, I, do CNSNR`);
-  if (c.m !== 'divorcio' && /\b(casad[oa]s?|divorciad[oa]s?|separad[oa]s? judicialmente)\b/i.test(v('m_aQual') + ' ' + (c.B ? v('m_bQual') : '')))
+  if (c.m !== 'divorcio' && /\b(casad[oa]s?|divorciad[oa]s?|separad[oa]s? judicialmente)\b/i.test((temCNPJ('m_aQual') ? '' : v('m_aQual')) + ' ' + (c.B ? v('m_bQual') : '')))
     lst.push(`as **PARTES** casadas, divorciadas ou separadas declaram, sob as penas da lei, que o conteúdo das certidões de casamento apresentadas, expedidas em ${F('m_casExp', 'data de expedição da certidão de casamento')}, há no máximo 90 (noventa) dias, permanece inalterado, nos termos do parágrafo único do art. 261 do CNSNR`);
   if (c.rural) lst.push('as **PARTES** declaram ciência de que o registro de imóvel rural pode depender de georreferenciamento certificado pelo INCRA, nos termos do art. 176, §§ 3º e 4º, da Lei nº 6.015/1973 e do Decreto nº 4.449/2002');
   lst.push(c.trad
@@ -735,8 +823,16 @@ function itConsultas(c) {
 }
 function itRegistro(c, extra) {
   const [G, base] = c.adq;
-  if (c.trad) return { tt: 'REGISTRO DE IMÓVEIS', x: `**A)** As **PARTES** autorizam ao Ofício de Registro de Imóveis competente a proceder todos os atos de registro e averbações necessários à perfeita caracterização objetiva e subjetiva do imóvel desta escritura, nos termos do art. 1.245 do Código Civil; **B)** As **PARTES** foram devidamente orientadas a protocolarem a presente Escritura Pública no Serviço do Registro de Imóveis competente, nos termos do art. 1.227, do Código Civil, para surtir seus devidos efeitos de publicidade; **C)** Nos termos do Provimento CNJ nº 61/2017, ${art.o(G)} ${R([G, base])}, já ${w(G, 'qualificado', 'qualificada', 'qualificados', 'qualificadas')}, na qualidade de parte interessada, desde já ${vb(G, 'requer', 'requerem')} ao Ofício de Registro de Imóveis competente que registre o presente instrumento na matrícula do imóvel qualificado nesta escritura.` + (extra ? ` **D)** ${extra}` : '') };
-  return { tr: 'DO REGISTRO IMOBILIÁRIO', x: `As partes autorizam o Ofício de Registro de Imóveis competente a praticar todos os registros e averbações necessários à perfeita caracterização objetiva e subjetiva do imóvel, nos termos do art. 1.245 do Código Civil, e foram orientadas de que a propriedade somente se transmite com o registro desta escritura, conforme o art. 1.227 do Código Civil. ${cap(art.o(G))} ${R([G, base])}, na qualidade de ${w(G, 'interessado', 'interessada', 'interessados', 'interessadas')}, ${vb(G, 'requer', 'requerem')} desde já o registro deste instrumento na matrícula do imóvel, nos termos do Provimento CNJ nº 61/2017.` + (extra ? ' ' + extra : '') };
+  // Venda ao cessionário: declarações para a qualificação registral (texto da minuta 137, aprovada em 27/10/2026).
+  let qr = '';
+  if (c.ces) {
+    const d = dadosCessao(c), [GA] = c.prop, pela = w(GA, 'pelo titular', 'pela titular', 'pelos titulares', 'pelas titulares');
+    qr = c.trad
+      ? ` **D) QUALIFICAÇÃO REGISTRAL:** As **PARTES** declaram, para conhecimento do Ofício de Registro de Imóveis competente, que: **1)** o título objeto de registro é exclusivamente a presente compra e venda, outorgada ${pela} do domínio constante ${ip(c, 'da matrícula indicada', 'das matrículas indicadas')} no Item {{titulo}}, observado o princípio da continuidade, nos termos dos arts. 195 e 237 da Lei nº 6.015/73; **2)** ${d.negs} ${d.fem ? 'descritas' : 'descritos'} no Item {{cessao}} constituem negócios jurídicos de natureza obrigacional, jamais levados a registro, que não transferiram o domínio ${ip(c, 'do imóvel', 'dos imóveis')}, nos termos do art. 1.245 do Código Civil, sendo ${d.fem ? 'mencionadas' : 'mencionados'} neste ato exclusivamente como prova da origem dos direitos e da quitação, e não são objeto de registro; e **3)** o Imposto de Transmissão de Bens Imóveis – ITBI incide somente sobre a transmissão objeto desta escritura.`
+      : ` Para a qualificação registral, as partes declaram que: **a)** o título a registrar é exclusivamente esta compra e venda, outorgada ${pela} do domínio constante ${ip(c, 'da matrícula', 'das matrículas')}, observada a continuidade (arts. 195 e 237 da Lei nº 6.015/1973); **b)** ${d.negs.replace(/ de direitos$/, '')} do item {{cessao}} são negócios obrigacionais nunca registrados, que não transferiram o domínio (art. 1.245 do Código Civil), mencionados apenas como prova da origem dos direitos e da quitação, e não são objeto de registro; **c)** o ITBI incide somente sobre a transmissão objeto desta escritura.`;
+  }
+  if (c.trad) return { tt: 'REGISTRO DE IMÓVEIS', x: `**A)** As **PARTES** autorizam ao Ofício de Registro de Imóveis competente a proceder todos os atos de registro e averbações necessários à perfeita caracterização objetiva e subjetiva ${ip(c, 'do imóvel', 'dos imóveis')} desta escritura, nos termos do art. 1.245 do Código Civil; **B)** As **PARTES** foram devidamente orientadas a protocolarem a presente Escritura Pública no Serviço do Registro de Imóveis competente, nos termos do art. 1.227, do Código Civil, para surtir seus devidos efeitos de publicidade; **C)** Nos termos do Provimento CNJ nº 61/2017, ${art.o(G)} ${R([G, base])}, já ${w(G, 'qualificado', 'qualificada', 'qualificados', 'qualificadas')}, na qualidade de parte interessada, desde já ${vb(G, 'requer', 'requerem')} ao Ofício de Registro de Imóveis competente que registre o presente instrumento ${ip(c, 'na matrícula do imóvel qualificado', 'nas matrículas dos imóveis qualificados')} nesta escritura${qr ? ';' : '.'}` + qr + (extra ? ` **D)** ${extra}` : '') };
+  return { tr: 'DO REGISTRO IMOBILIÁRIO', x: `As partes autorizam o Ofício de Registro de Imóveis competente a praticar todos os registros e averbações necessários à perfeita caracterização objetiva e subjetiva ${ip(c, 'do imóvel', 'dos imóveis')}, nos termos do art. 1.245 do Código Civil, e foram orientadas de que a propriedade somente se transmite com o registro desta escritura, conforme o art. 1.227 do Código Civil. ${cap(art.o(G))} ${R([G, base])}, na qualidade de ${w(G, 'interessado', 'interessada', 'interessados', 'interessadas')}, ${vb(G, 'requer', 'requerem')} desde já o registro deste instrumento ${ip(c, 'na matrícula do imóvel', 'nas matrículas dos imóveis')}, nos termos do Provimento CNJ nº 61/2017.` + qr + (extra ? ' ' + extra : '') };
 }
 function itAdvogado(artigo) {
   return { tt: 'ADVOGADO', tr: 'DO ADVOGADO', x: `Assiste as **PARTES**, nos termos do ${artigo}, ${F('m_adv', 'nome e OAB do advogado')}.` };
@@ -752,17 +848,26 @@ function itensCompraVenda(c) {
   const txtRecusa = !recusa ? '' : c.trad
     ? ' As **PARTES** recusaram-se a fornecer os dados do meio de pagamento, recusa que consigno nos termos do § 3º do art. 165-A do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023).'
     : ' As partes recusaram-se a fornecer os dados do meio de pagamento, o que consigno nos termos do art. 165-A, § 3º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial.';
-  const vontade = { tt: 'VONTADE DAS PARTES', x: `Então, pelas **PARTES**, no uso da prerrogativa de livre escolha do Tabelionato de Notas, nos termos do art. 8º, da Lei 8.935/94, bem como nos termos dos artigos 481, 1.228 e seguintes do Código Civil, formalizam juridicamente a sua vontade, nos seguintes termos: **A)** ${cap(art.pelo(A))} ${V} me foi dito que, por ${vb(A, 'ser', 'serem')} ${w(A, 'legítimo proprietário', 'legítima proprietária', 'legítimos proprietários', 'legítimas proprietárias')} do imóvel a seguir descrito, a justo título, é de seu interesse a venda ${art.ao(B)} ${C} nos preços e condições estabelecidas nesta Escritura Pública. **B)** ${cap(art.pelo(B))} ${C} me foi dito que é de seu interesse a aquisição do referido imóvel, nas mesmas condições estabelecidas nesta Escritura.` };
+  const ces = c.ces, cess = w(B, 'cessionário', 'cessionária', 'cessionários', 'cessionárias'), d = ces ? dadosCessao(c) : null;
+  const legit = ces ? w(A, 'legítimo titular', 'legítima titular', 'legítimos titulares', 'legítimas titulares') : w(A, 'legítimo proprietário', 'legítima proprietária', 'legítimos proprietários', 'legítimas proprietárias');
+  const vontade = { tt: 'VONTADE DAS PARTES', x: `Então, pelas **PARTES**, no uso da prerrogativa de livre escolha do Tabelionato de Notas, nos termos do art. 8º, da Lei 8.935/94, bem como nos termos dos artigos 481, 1.228 e seguintes do Código Civil, formalizam juridicamente a sua vontade, nos seguintes termos: **A)** ${cap(art.pelo(A))} ${V}${c.pres} me foi dito que, por ${vb(A, 'ser', 'serem')} ${legit} ${ip(c, 'do imóvel a seguir descrito', 'dos imóveis a seguir descritos')}, a justo título, é de seu interesse a venda ${art.ao(B)} ${C}${ces ? `, ${cess} dos direitos aquisitivos sobre ${ip(c, 'o referido imóvel', 'os referidos imóveis')},` : ''} nos preços e condições estabelecidas nesta Escritura Pública. **B)** ${cap(art.pelo(B))} ${C} me foi dito que é de seu interesse a aquisição ${ip(c, 'do referido imóvel', 'dos referidos imóveis')}, nas mesmas condições estabelecidas nesta Escritura.` };
+  // Venda ao cessionário: o preço foi pago aos cedentes; o vendedor dá quitação porque recebeu no negócio original.
   const preco = c.trad
-    ? { tt: 'PREÇO E FORMA DE PAGAMENTO', x: `Foi declarado pelas **PARTES** que o valor da compra e venda relativa ao imóvel é de ${valor}. O negócio jurídico, perfeito e realizado, foi pago integralmente ${art.pelo(B)} ${C}, em ${pd}, à vista, em moeda corrente do País, por intermédio de ${pf}${pdet}, quantia esta que ${art.o(A)} ${V} ${vb(A, 'declara', 'declaram')} receber integralmente, pelo que ${vb(A, 'dá', 'dão')} plena, geral e irrevogável quitação do preço ajustado para a presente negociação, considerando pago e satisfeito por si e seus sucessores a qualquer título.${txtRecusa}` }
-    : { tr: 'DO PREÇO E DA QUITAÇÃO', x: `O preço da compra e venda é de ${valor}, pago integralmente ${art.pelo(B)} ${C} em ${pd}, à vista, em moeda corrente nacional, por meio de ${pf}${pdet}. ${cap(art.o(A))} ${V} ${vb(A, 'declara', 'declaram')} ter recebido a totalidade do preço e ${vb(A, 'dá', 'dão')} ${art.ao(B)} ${C} plena, geral e irrevogável quitação, por si e por seus sucessores.${txtRecusa}` };
+    ? { tt: 'PREÇO E FORMA DE PAGAMENTO', x: ces
+      ? `Foi declarado pelas **PARTES** que o valor da compra e venda relativa ${ip(c, 'ao imóvel', 'aos imóveis')} é de ${valor}, pago integralmente ${art.pelo(B)} ${C} ${d.pagoA}, em ${pd}, à vista, por intermédio de ${pf}${pdet}. ${cap(art.o(A))} ${V}, que ${vb(A, 'recebeu', 'receberam')} ${d.quit}, ${vb(A, 'dá', 'dão')} plena, geral e irrevogável quitação do preço ajustado.${txtRecusa}`
+      : `Foi declarado pelas **PARTES** que o valor da compra e venda relativa ${ip(c, 'ao imóvel', 'aos imóveis')} é de ${valor}. O negócio jurídico, perfeito e realizado, foi pago integralmente ${art.pelo(B)} ${C}, em ${pd}, à vista, em moeda corrente do País, por intermédio de ${pf}${pdet}, quantia esta que ${art.o(A)} ${V} ${vb(A, 'declara', 'declaram')} receber integralmente, pelo que ${vb(A, 'dá', 'dão')} plena, geral e irrevogável quitação do preço ajustado para a presente negociação, considerando pago e satisfeito por si e seus sucessores a qualquer título.${txtRecusa}` }
+    : { tr: 'DO PREÇO E DA QUITAÇÃO', x: ces
+      ? `O preço da compra e venda é de ${valor}, pago integralmente ${art.pelo(B)} ${C} ${d.pagoA} em ${pd}, à vista, por meio de ${pf}${pdet}. ${cap(art.o(A))} ${V}, que ${vb(A, 'recebeu', 'receberam')} ${d.quit}, ${vb(A, 'dá', 'dão')} ${art.ao(B)} ${C} plena, geral e irrevogável quitação.${txtRecusa}`
+      : `O preço da compra e venda é de ${valor}, pago integralmente ${art.pelo(B)} ${C} em ${pd}, à vista, em moeda corrente nacional, por meio de ${pf}${pdet}. ${cap(art.o(A))} ${V} ${vb(A, 'declara', 'declaram')} ter recebido a totalidade do preço e ${vb(A, 'dá', 'dão')} ${art.ao(B)} ${C} plena, geral e irrevogável quitação, por si e por seus sucessores.${txtRecusa}` };
   const venda = c.trad
-    ? { tt: 'COMPRA E VENDA E DA GARANTIA PELOS RISCOS DE EVICÇÃO DE DIREITO', x: `**A)** E assim, ${art.o(A)} ${V}, por ${vb(A, 'receber', 'receberem')} integralmente o preço ajustado pela presente escritura e na melhor forma de direito, ${vb(A, 'vende e transfere', 'vendem e transferem')} ${art.ao(B)} ${C} o imóvel acima descrito, ao tempo em que ${vb(A, 'transfere', 'transferem')} todos os direitos de ações, jus, domínio e posse sobre ele, por intermédio da cláusula **CONSTITUTI**, garantindo a faculdade de usar, gozar, dispor e reaver o imóvel, de forma incontestável e efetiva, como proprietário e legítimo possuidor, nos termos do art. 1.228 do Código Civil; **B)** ${cap(art.o(A))} ${V} se ${vb(A, 'compromete', 'comprometem')} a garantir como firme e boa a presente compra e venda, bem como a responder, a todo tempo e na forma da Lei, pelos riscos de evicção de direito.` }
-    : { tr: 'DA COMPRA E VENDA', x: `No exercício da livre escolha do tabelião, assegurada pelo art. 8º da Lei nº 8.935/1994, e nos termos dos arts. 481 e seguintes do Código Civil, ${art.o(A)} ${V} ${vb(A, 'vende', 'vendem')} ${art.ao(B)} ${C} o imóvel descrito no item {{objeto}} e ${vb(B, 'lhe', 'lhes')} ${vb(A, 'transmite', 'transmitem')}, desde já, por força desta escritura e da cláusula **CONSTITUTI**, o domínio, a posse, os direitos e as ações que sobre ele ${vb(A, 'exercia', 'exerciam')}, para que ${art.o(B)} ${C} o ${vb(B, 'use, goze, disponha e reivindique', 'usem, gozem, disponham e reivindiquem')} como seu, na forma do art. 1.228 do Código Civil. ${cap(art.o(B))} ${C} ${vb(B, 'aceita', 'aceitam')} a venda nos termos aqui estabelecidos. ${cap(art.o(A))} ${V} ${vb(A, 'obriga-se', 'obrigam-se')} a fazer esta venda sempre boa, firme e valiosa e a responder pela evicção, na forma da lei.` };
+    ? { tt: 'COMPRA E VENDA E DA GARANTIA PELOS RISCOS DE EVICÇÃO DE DIREITO', x: `**A)** E assim, ${art.o(A)} ${V}, por ${ces ? vb(A, 'ter recebido', 'terem recebido') : vb(A, 'receber', 'receberem')} integralmente o preço ajustado pela presente escritura e na melhor forma de direito, ${vb(A, 'vende e transfere', 'vendem e transferem')} ${art.ao(B)} ${C} ${ip(c, 'o imóvel acima descrito', 'os imóveis acima descritos')}, ao tempo em que ${vb(A, 'transfere', 'transferem')} todos os direitos de ações, jus, domínio e posse sobre ${ip(c, 'ele', 'eles')}, por intermédio da cláusula **CONSTITUTI**, garantindo a faculdade de usar, gozar, dispor e reaver ${ip(c, 'o imóvel', 'os imóveis')}, de forma incontestável e efetiva, como proprietário e legítimo possuidor, nos termos do art. 1.228 do Código Civil; **B)** ${cap(art.o(A))} ${V} se ${vb(A, 'compromete', 'comprometem')} a garantir como firme e boa a presente compra e venda, bem como a responder, a todo tempo e na forma da Lei, pelos riscos de evicção de direito.` }
+    : { tr: 'DA COMPRA E VENDA', x: `No exercício da livre escolha do tabelião, assegurada pelo art. 8º da Lei nº 8.935/1994, e nos termos dos arts. 481 e seguintes do Código Civil, ${art.o(A)} ${V} ${vb(A, 'vende', 'vendem')} ${art.ao(B)} ${C}${ces ? `, na qualidade de ${cess},` : ''} ${ip(c, 'o imóvel descrito', 'os imóveis descritos')} no item {{objeto}} e ${vb(B, 'lhe', 'lhes')} ${vb(A, 'transmite', 'transmitem')}, desde já, por força desta escritura e da cláusula **CONSTITUTI**, o domínio, a posse, os direitos e as ações que sobre ${ip(c, 'ele', 'eles')} ${vb(A, 'exercia', 'exerciam')}, para que ${art.o(B)} ${C} ${ip(c, 'o', 'os')} ${vb(B, 'use, goze, disponha e reivindique', 'usem, gozem, disponham e reivindiquem')} como ${ip(c, 'seu', 'seus')}, na forma do art. 1.228 do Código Civil. ${cap(art.o(B))} ${C} ${vb(B, 'aceita', 'aceitam')} a venda nos termos aqui estabelecidos. ${cap(art.o(A))} ${V} ${vb(A, 'obriga-se', 'obrigam-se')} a fazer esta venda sempre boa, firme e valiosa e a responder pela evicção, na forma da lei.` };
   const partes = [itQualificacao(c, A, c.rA, 'A'), itQualificacao(c, B, c.rB, 'B'), itIdentidade(c)];
+  // Venda ao cessionário: a origem dos direitos vem depois do título (revisada) ou do cadastro (tradicional), como na 137.
+  const cesIt = ces ? [itCessao(c)] : [];
   return c.trad
-    ? [...partes, vontade, itObjeto(c), itTitulo(c), itCadastro(c), preco, itImposto(c), venda, itCertidoes(c), itLGPD(c), itDeclaracoes(c), itConsultas(c), itRegistro(c)]
-    : [...partes, itObjeto(c), itTitulo(c), itCadastro(c), preco, venda, itImposto(c), itCertidoes(c), itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c)];
+    ? [...partes, vontade, itObjeto(c), itTitulo(c), itCadastro(c), ...cesIt, preco, itImposto(c), venda, itCertidoes(c), itLGPD(c), itDeclaracoes(c), itConsultas(c), itRegistro(c)]
+    : [...partes, itObjeto(c), itTitulo(c), ...cesIt, itCadastro(c), preco, venda, itImposto(c), itCertidoes(c), itDeclaracoes(c), itConsultas(c), itLGPD(c), itRegistro(c)];
 }
 
 function itensDacao(c) {
@@ -902,8 +1007,10 @@ function gerarProcuracao(c) {
     : `Saibam todos quantos virem este público instrumento que, ${data}, ${ct.localRev || ct.localTrad || '[[local da lavratura xxx]]'}, em Cartório, perante mim, ${ct.cargoCurto || cargo}, ${vb(A, 'compareceu a parte', 'compareceram as partes')} a seguir ${vb(A, 'qualificada', 'qualificadas')}.`;
   const testemunhas = rogo ? 'na presença das testemunhas acima qualificadas' : 'dispensada a presença das testemunhas instrumentárias';
   if (!c.trad) itens.push({ tr: 'DO ENCERRAMENTO', x: `Assim ${vb(A, 'o disse e me pediu', 'o disseram e me pediram')} que lavrasse este instrumento, o qual, lido em voz alta e achado conforme, ${vb(A, 'aceita, outorga e assina', 'aceitam, outorgam e assinam')}, ${testemunhas}. Eu, ${lav}, ${cargo}, o lavrei, conferi, li e subscrevo e encerro o ato. Dou fé. Selo: ${selo}.` });
-  let corpo = abertura + ' ' + itens.map((it, i) => `__${romano(i + 1)} – ${c.trad ? it.tt : it.tr}:__ ${it.x}`).join(' ');
-  if (c.trad) corpo += ` **ASSIM** o ${vb(A, 'disse', 'disseram')}, do que **DOU FÉ**, me ${vb(A, 'pediu', 'pediram')} este público instrumento que ${vb(A, 'lhe', 'lhes')} lavrei em minhas notas. Lido e achado conforme, ${vb(A, 'aceita, concorda, outorga e assina', 'aceitam, concordam, outorgam e assinam')}, ${testemunhas}, do que **DOU FÉ**. Eu, ${lavCargo}, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assinam ${art.o(A)} **${MA}** e o **${(ct.cargoCurto || cargo).toUpperCase()}**.`;
+  const fecho = c.trad ? `**ASSIM** o ${vb(A, 'disse', 'disseram')}, do que **DOU FÉ**, me ${vb(A, 'pediu', 'pediram')} este público instrumento que ${vb(A, 'lhe', 'lhes')} lavrei em minhas notas. Lido e achado conforme, ${vb(A, 'aceita, concorda, outorga e assina', 'aceitam, concordam, outorgam e assinam')}, ${testemunhas}, do que **DOU FÉ**. Eu, ${lavCargo}, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assinam ${art.o(A)} **${MA}** e o **${(ct.cargoCurto || cargo).toUpperCase()}**.` : undefined;
+  const aj = aplicarAjustes(c, itens, { ementa: titulo, fecho });
+  let corpo = abertura + ' ' + aj.itens.map((it, i) => `__${romano(i + 1)} – ${c.trad ? (it.tt || it.tr) : (it.tr || it.tt)}:__ ${it.x}`).join(' ');
+  if (c.trad) corpo += ' ' + aj.fecho;
 
   // Assinam só o mandante (ou quem assina a rogo, com as testemunhas) e o tabelião.
   const ass = rogo
@@ -911,7 +1018,7 @@ function gerarProcuracao(c) {
     : A.pessoas.map(p => [p.nome.toUpperCase(), p.papel || 'Mandante']);
   ass.push([ct.lavrador || 'NOME DE QUEM LAVRA', cargo]);
   const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
-  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('ementa', titulo) + fimMinuta(corpo, ct, ass);
+  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('ementa', aj.ementa) + fimMinuta(corpo, ct, ass);
   mostrarAvisos([]);
 }
 
@@ -921,7 +1028,106 @@ function fimMinuta(corpo, ct, ass) {
   return `<p class="corpo junto">${marcacao(negritarNomes(corpo))}</p>` +
     `<p class="c data junto">${marcacao(`${ct.cidadeData || '[[cidade/UF xxx]]'}, ${dataCurta(v('m_data')) || '[[data xxx]]'}.`)}</p>` +
     // nomes nas assinaturas sem negrito (regra do usuário; no texto, os nomes das partes ficam em negrito)
-    ass.map(([n, r], i) => `<div class="ass${i < ass.length - 1 ? ' junto' : ''}">______________________________________________<br>${esc(n)}${r ? '<br>' + esc(r) : ''}</div>`).join('');
+    ass.map(([n, r], i) => `<div class="ass${i < ass.length - 1 ? ' junto' : ''}">______________________________________________<br>${esc(n)}${r ? '<br>' + esc(r).replace(/\n/g, '<br>') : ''}</div>`).join('');
+}
+
+/* Ajustes por item: o que fazemos à mão nas minutas especiais, guardado junto com a escritura.
+   Para cada item (por redação e tipo de ato): "proprio" substitui o texto gerado, "mais" é acrescentado ao fim e
+   "novo" ("TÍTULO: texto") cria um item logo depois. Também a ementa e o fecho da redação tradicional. */
+let AJ = {};
+const ajChave = (c, tit) => `${c.trad ? 'trad' : 'rev'}|${c.m}|${tit}`;
+const ajTexto = s => String(s || '').replace(/\s*\n\s*/g, ' ').trim();
+function aplicarAjustes(c, itens, extras) {
+  const out = [], lista = [];
+  for (const it of itens) {
+    const tit = c.trad ? (it.tt || it.tr) : (it.tr || it.tt), a = AJ[ajChave(c, tit)] || {};
+    lista.push({ tit, gerado: it.x });
+    const x = (ajTexto(a.proprio) || it.x) + (ajTexto(a.mais) ? ' ' + ajTexto(a.mais) : '');
+    out.push({ ...it, x });
+    const m = ajTexto(a.novo).match(/^([^:]{2,90}):\s*(.+)$/);
+    if (m) out.push({ tt: m[1].trim().toUpperCase(), tr: m[1].trim().toUpperCase(), x: m[2].trim() });
+  }
+  // Ementa (no começo) e fecho da redação tradicional (no fim): só "texto próprio" e, no fecho, "acrescentar".
+  const res = { itens: out, ementa: extras.ementa, fecho: extras.fecho };
+  for (const k of ['ementa', 'fecho']) {
+    if (extras[k] === undefined) continue;
+    const tit = k.toUpperCase(), a = AJ[ajChave(c, tit)] || {};
+    lista[k === 'ementa' ? 'unshift' : 'push']({ tit, gerado: extras[k], so: true });
+    res[k] = (ajTexto(a.proprio) || extras[k]) + (k === 'fecho' && ajTexto(a.mais) ? ' ' + ajTexto(a.mais) : '');
+  }
+  montarPainelItens(c, lista);
+  return res;
+}
+// Painel "Ajustar o texto de cada item": refeito só quando muda a lista de itens (para não perder o que se digita).
+function montarPainelItens(c, todos) {
+  const box = $('mItens');
+  if (!box) return;
+  montarPainelItens.gerados = Object.fromEntries(todos.map(i => [ajChave(c, i.tit), i.gerado]));
+  const assin = todos.map(i => ajChave(c, i.tit)).join('¦');
+  const marca = k => { const a = AJ[k] || {}; return a.proprio || a.mais || a.novo ? ' ✎' : ''; };
+  if (box.dataset.assin === assin) { box.querySelectorAll('details[data-k]').forEach(d => { d.querySelector('summary .aj').textContent = marca(d.dataset.k); }); return; }
+  box.dataset.assin = assin;
+  box.innerHTML = todos.map(i => {
+    const k = ajChave(c, i.tit), a = AJ[k] || {};
+    return `<details data-k="${esc(k)}"><summary>${esc(i.tit)}<span class="aj">${marca(k)}</span></summary>` +
+      `<label class="f">Texto próprio (substitui o gerado)</label><textarea data-campo="proprio">${esc(a.proprio || '')}</textarea>` +
+      `<button type="button" data-copiar>Copiar o texto gerado para editar</button>` +
+      (i.so && i.tit === 'EMENTA' ? '' : `<label class="f">Acrescentar ao fim</label><textarea class="curto" data-campo="mais">${esc(a.mais || '')}</textarea>`) +
+      (i.so ? '' : `<label class="f">Novo item logo depois (TÍTULO: texto)</label><textarea class="curto" data-campo="novo">${esc(a.novo || '')}</textarea>`) +
+      '</details>';
+  }).join('');
+}
+function ligarPainelItens() {
+  const box = $('mItens');
+  if (!box) return;
+  box.addEventListener('input', e => {
+    const d = e.target.closest('details[data-k]'), campo = e.target.dataset.campo;
+    if (!d || !campo) return;
+    const k = d.dataset.k, a = AJ[k] = AJ[k] || {};
+    if (e.target.value.trim()) a[campo] = e.target.value; else delete a[campo];
+    if (!Object.keys(a).length) delete AJ[k];
+    gerarMinuta(); agendarGuardarMinuta();
+  });
+  box.addEventListener('click', e => {
+    if (!e.target.matches('[data-copiar]')) return;
+    const d = e.target.closest('details[data-k]'), ta = d.querySelector('[data-campo="proprio"]');
+    ta.value = (montarPainelItens.gerados || {})[d.dataset.k] || '';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+/* Dados da minuta guardados na escritura (gerar de novo nunca perde o que foi digitado). */
+function dadosMinutaForm() {
+  const campos = {};
+  document.querySelectorAll('#mForm input, #mForm select, #mForm textarea').forEach(el => {
+    if (!el.id || el.id === 'mEsc' || el.closest('#mItens')) return;
+    campos[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  return { v: 1, campos, ajustes: JSON.parse(JSON.stringify(AJ)), salvoEm: agora() };
+}
+function aplicarDadosMinuta(d) {
+  for (const [id, val] of Object.entries(d.campos || {})) {
+    const el = $(id);
+    if (!el) continue;
+    if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
+  }
+  AJ = JSON.parse(JSON.stringify(d.ajustes || {}));
+  if ($('mItens')) $('mItens').dataset.assin = '';
+  aoMudarModal.ultimo = v('m_modal'); // não troca o imposto escolhido
+}
+async function guardarMinutaNaEscritura() {
+  const id = $('mEsc').value;
+  if (!id) return false;
+  const e = await Reg.get('escrituras', id);
+  if (!e) return false;
+  e.minutaDados = dadosMinutaForm();
+  await Reg.salvar('escrituras', e);
+  return true;
+}
+function agendarGuardarMinuta() {
+  if (!$('mEsc') || !$('mEsc').value) return;
+  clearTimeout(agendarGuardarMinuta.t);
+  agendarGuardarMinuta.t = setTimeout(() => guardarMinutaNaEscritura().catch(e => aviso('Não guardou a minuta: ' + e.message, 'erro')), 3000);
 }
 
 const TITULOS = {
@@ -961,14 +1167,18 @@ function gerarMinuta() {
   }
   const quemAssina = c.m === 'inventario' || c.m === 'divorcio'
     ? `os ${R([c.A, c.rA])}, o **ADVOGADO**`
-    : `${art.o(c.A)} ${R([c.A, c.rA])}, ${art.o(c.B)} ${R([c.B, c.rB])}`;
+    : `${art.o(c.A)} ${R([c.A, c.rA])}${c.pres.replace(/,$/, '')}, ${art.o(c.B)} ${R([c.B, c.rB])}`;
   if (!c.trad) itens.push({ tr: 'DO ENCERRAMENTO', x: `Assim o disseram e me pediram que lavrasse este instrumento, o qual, lido em voz alta e achado conforme, aceitam, outorgam e assinam, dispensada a presença de testemunhas instrumentárias. Eu, ${lav}, ${cargo}, o lavrei, conferi, li e subscrevo e encerro o ato. Dou fé. Selo: ${selo}.` });
 
-  // Numeração romana e referências cruzadas entre itens ({{objeto}}, {{titulo}}, {{divida}}).
+  // Ajustes de cada item (texto próprio, acréscimo, item novo) – como fazemos à mão nas minutas especiais.
+  const fecho = c.trad ? `**ASSIM** o disseram, do que **DOU FÉ**, me pediram este público instrumento, que lhes lavrei nas minhas notas. **NADA MAIS ME FOI DITO**, lido e achado conforme, aceitam, concordam e outorgam, dispensada a presença das testemunhas instrumentárias, do que **DOU FÉ**. Eu, ${ct.lavrador ? `**${ct.lavrador} – ${cargo}**` : `${lav} – ${cargo}`}, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assinam ${quemAssina} e o **${(ct.cargoCurto || cargo).toUpperCase()}**.` : undefined;
+  const aj = aplicarAjustes(c, itens, { ementa: titulo, fecho });
+  titulo = aj.ementa;
+  // Numeração romana e referências cruzadas entre itens ({{objeto}}, {{titulo}}, {{divida}}, {{cessao}}).
   const ref = {};
-  itens.forEach((it, i) => { if (it.k) ref[it.k] = romano(i + 1); });
-  let corpo = abertura + ' ' + itens.map((it, i) => `__${romano(i + 1)} – ${c.trad ? (it.tt || it.tr) : (it.tr || it.tt)}:__ ${it.x}`).join(' ');
-  if (c.trad) corpo += ` **ASSIM** o disseram, do que **DOU FÉ**, me pediram este público instrumento, que lhes lavrei nas minhas notas. **NADA MAIS ME FOI DITO**, lido e achado conforme, aceitam, concordam e outorgam, dispensada a presença das testemunhas instrumentárias, do que **DOU FÉ**. Eu, ${ct.lavrador ? `**${ct.lavrador} – ${cargo}**` : `${lav} – ${cargo}`}, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assinam ${quemAssina} e o **${(ct.cargoCurto || cargo).toUpperCase()}**.`;
+  aj.itens.forEach((it, i) => { if (it.k) ref[it.k] = romano(i + 1); });
+  let corpo = abertura + ' ' + aj.itens.map((it, i) => `__${romano(i + 1)} – ${c.trad ? (it.tt || it.tr) : (it.tr || it.tt)}:__ ${it.x}`).join(' ');
+  if (c.trad) corpo += ' ' + aj.fecho;
   corpo = corpo.replace(/\{\{(\w+)\}\}/g, (_, k) => ref[k] || `[[item ${k} xxx]]`);
 
   const ass = [];
@@ -1020,6 +1230,8 @@ function aoMudarModal() {
   $('lblValor').textContent = { cv: 'Preço e pagamento', dacao: 'Valor da dívida', inventario: 'Valor dos bens e partilha', divorcio: 'Valor do imóvel e partilha' }[m];
   $('lblValorCampo').textContent = { cv: 'Preço (R$)', dacao: 'Valor da dívida / atribuído ao imóvel (R$)', inventario: 'Monte-mor (R$)', divorcio: 'Valor atribuído ao imóvel (R$)' }[m];
   $('lblImp').textContent = m === 'inventario' ? 'Imposto (ITCMD)' : 'Imposto (ITBI)';
+  $('boxCessao').classList.toggle('hidden', !$('m_cessao').checked);
+  $('boxAfor').classList.toggle('hidden', !$('m_afor').checked);
   if (aoMudarModal.ultimo !== m) {
     $('m_imp').value = { cv: 'pendente', dacao: 'pendente', inventario: 'pago', divorcio: 'nao_incide', procuracao: 'nao_incide' }[m];
     aoMudarModal.ultimo = m;
@@ -1030,10 +1242,12 @@ function aoMudarModal() {
 function nomeArquivoMinuta() {
   const c = contexto(), prim = p => (p ? semAcento(p.nome.split(' ')[0]).toUpperCase() : 'xxx');
   if (c.m === 'procuracao') return nomePasta(`${v('m_num') || 'NNN'} - PROCURACAO ${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])} - LIVRO ${v('m_livro') || 'xxx'} FOLHAS ${formatarFolhas(v('m_folhas')) || 'xxx'} (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`.replace(/\//g, '-'), 180);
-  const tipo = { cv: 'COMPRA E VENDA', dacao: 'DACAO EM PAGAMENTO', inventario: 'INVENTARIO', divorcio: 'DIVORCIO' }[c.m];
+  // Nome fixo da pasta 01 (regra do usuário, 27/10/2026): "NNN - ESCRITURA X PARA Y - MINUTA (TRADICIONAL|REVISADO)";
+  // salvar de novo substitui o mesmo arquivo (nunca cópia).
+  const tipo = { cv: '', dacao: 'DACAO EM PAGAMENTO ', inventario: 'INVENTARIO ', divorcio: 'DIVORCIO ' }[c.m];
   const partes = c.m === 'inventario' ? `DE ${semAcento(v('m_falNome').split(' ')[0] || 'xxx').toUpperCase()}`
     : c.m === 'divorcio' ? `${prim(c.A.pessoas[0])} E ${prim(c.A.pessoas[1])}` : `${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])}`;
-  return nomePasta(`${v('m_num') || 'NNN'} - ESCRITURA ${tipo} ${partes} - LIVRO ${v('m_livro') || 'xxx'} (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`, 180);
+  return nomePasta(`${v('m_num') || 'NNN'} - ESCRITURA ${tipo}${partes} - MINUTA (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`, 180);
 }
 
 // Timbre da minuta: faixa azul com o selo e o texto do cartório (Ajustes → Cartório → Timbre da minuta).
@@ -1221,7 +1435,9 @@ async function minutaDaEscritura(id) {
   const e = id && await Reg.get('escrituras', id);
   if (!e) return;
   $('mEsc').value = id;
-  $('m_modal').value = NATUREZA_MODAL(e.natureza || '');
+  // Minuta já trabalhada nesta escritura: volta exatamente como estava (campos e ajustes por item).
+  if (e.minutaDados) aplicarDadosMinuta(e.minutaDados);
+  else { AJ = {}; $('m_modal').value = NATUREZA_MODAL(e.natureza || ''); }
   const limpar = s => String(s || '').replace(/^[A-ZÇÃÁÉÍÓÚ ]+:\s*/i, '').split(/\s+E\s+|,\s*/).map(x => x.trim()).filter(Boolean).join('\n');
   if (e.outorgantes && !v('m_aNomes')) $('m_aNomes').value = limpar(e.outorgantes);
   if (e.outorgados && !v('m_bNomes')) $('m_bNomes').value = limpar(e.outorgados);
@@ -1267,10 +1483,23 @@ function iniciarFerramentas() {
     aoMudarModal(); abrirSub('minuta');
   });
 
-  ['m_modal', 'm_imovel', 'm_procTipo'].forEach(id => $(id).addEventListener('change', aoMudarModal));
+  ['m_modal', 'm_imovel', 'm_procTipo', 'm_cessao', 'm_afor'].forEach(id => $(id).addEventListener('change', aoMudarModal));
+  // Município: preenche os dados do cadastro fiscal (o usuário pode alterar depois).
+  $('m_munPreset').addEventListener('change', () => {
+    const p = MUNICIPIOS[v('m_munPreset')];
+    if (p) { $('m_municipio').value = p.mun; $('m_cadSigla').value = p.sigla; $('m_cadNome').value = p.nome; $('m_cadOrgao').value = p.orgao; }
+    gerarMinuta();
+  });
   document.querySelectorAll('#mForm input, #mForm select, #mForm textarea').forEach(el => {
-    if (['m_modal', 'm_imovel', 'mEsc'].includes(el.id)) return;
-    el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', gerarMinuta);
+    if (el.closest('#mItens')) return;
+    if (!['m_modal', 'm_imovel', 'mEsc', 'm_munPreset', 'm_cessao', 'm_afor'].includes(el.id))
+      el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', gerarMinuta);
+    if (el.id !== 'mEsc') el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', agendarGuardarMinuta);
+  });
+  ligarPainelItens();
+  $('mGuardar').addEventListener('click', async () => {
+    if (!$('mEsc').value) return aviso('Escolha a escritura (pasta) no topo do formulário.', 'erro');
+    try { await guardarMinutaNaEscritura(); aviso('Dados da minuta guardados na escritura.'); } catch (e) { aviso(e.message, 'erro'); }
   });
   ['m_venal', 'm_valor', 'm_impValor', 'm_impBase'].forEach(id => formatarAoSair($(id)));
   $('m_folhas').addEventListener('blur', () => { $('m_folhas').value = formatarFolhas(v('m_folhas')); });
@@ -1283,6 +1512,7 @@ function iniciarFerramentas() {
     if (!id) return aviso('Escolha a escritura (pasta) no topo do formulário.', 'erro');
     const b = $('mSalvar'); b.disabled = true;
     try {
+      await guardarMinutaNaEscritura();
       const nomeArq = await Esc.salvarNaSubpasta(id, '01 - MINUTA', nomeArquivoMinuta() + '.doc', blobMinutaWord());
       aviso('Minuta salva em 01 - MINUTA: ' + nomeArq);
       avisarPlanoAssinaturas();

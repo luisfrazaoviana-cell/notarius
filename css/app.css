@@ -260,3 +260,8 @@ fieldset { border: 0; padding: 0; margin: 0; }
   main { margin: 0; padding: 0; }
   .grid, .grid.larga { grid-template-columns: 1fr; }
 }
+/* Ajustes por item da minuta */
+.ajustes details { margin-top: 6px; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 10px; }
+.ajustes summary { font-size: 13px; }
+.ajustes summary .aj { color: var(--accent); }
+.ajustes textarea { min-height: 70px; }

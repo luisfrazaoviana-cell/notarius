@@ -1083,10 +1083,100 @@ function atoHTML(modo) {
     cel('FOLHAS', formatarFolhas(v('m_folhas')), 'folhas', 'right', w ? [0, WORD_FOLHA.dir] : []) + '</tr></table>';
 }
 
+// Medidas do Word para a minuta (em pontos), conferidas no Word com documentos gerados por esta função: área útil da
+// folha A4 (29,7 cm − 4,9 cm do cabeçalho com o timbre − 2 cm embaixo), linha do texto (1,5 em Arial Narrow 12),
+// linha da assinatura (espaçamento simples) e o espaço para assinar (1 cm).
+const WORD_MEDIDAS = { util: 646.3, linha: 20.7, linhaAss: 14.1, espacoAss: 28.35 };
+
+// Fonte do Word disponível neste aparelho? (largura com a fonte pedida diferente da fonte de reserva = existe)
+function temFonte(nome) {
+  const c = document.createElement('canvas').getContext('2d'), t = 'mmmmmmmmmmlli JÁ 0123456789';
+  return ['monospace', 'serif'].some(r => { c.font = `72px ${r}`; const a = c.measureText(t).width; c.font = `72px "${nome}", ${r}`; return c.measureText(t).width !== a; });
+}
+
+// Linhas da ementa e do texto no Word – contadas pela quebra de linhas do navegador com a mesma fonte e a mesma largura
+// do texto (16 cm). Sem Arial Narrow no aparelho, usa Arial na largura equivalente (a Narrow é a Arial a 82%).
+// Sem nenhuma das duas, devolve null (não dá para medir).
+function linhasMinutaWord() {
+  const doc = $('mDoc'), ementa = doc && doc.querySelector('p.ementa'), corpo = doc && doc.querySelector('p.corpo');
+  if (!ementa || !corpo) return null;
+  const narrow = temFonte('Arial Narrow');
+  if (!narrow && !temFonte('Arial')) return null;
+  const med = document.createElement('div');
+  med.style.cssText = `position:absolute;left:-99999px;top:0;visibility:hidden;width:${narrow ? 16 : 16 / 0.82}cm;` +
+    `font-family:${narrow ? '"Arial Narrow"' : 'Arial'},sans-serif;font-size:12pt;line-height:20px;text-align:justify`;
+  document.body.appendChild(med);
+  const linhas = (el, recuo) => {
+    const p = document.createElement('p'); p.style.cssText = `margin:0;text-indent:${recuo}`; p.innerHTML = el.innerHTML;
+    med.appendChild(p); return Math.round(p.getBoundingClientRect().height / 20);
+  };
+  const lE = linhas(ementa, '0'), lC = linhas(corpo, narrow ? '3.75cm' : 3.75 / 0.82 + 'cm');
+  med.remove();
+  // Conferido no Word (14 minutas de 104 a 173 linhas): o texto dá sempre 2 linhas a menos que no navegador.
+  return { lE, lC: lC - 2 };
+}
+
+// Quanto sobra (em pontos) na última folha do Word depois do "Bujaru/PA, data.", com a entrelinha do texto "lt" (pt).
+function sobraUltimaPagina(med, lt = WORD_MEDIDAS.linha) {
+  if (!med) return null;
+  const M = WORD_MEDIDAS, topo1 = med.lE * M.linha + 18, porFolha = Math.floor(M.util / lt);
+  const naFolha1 = Math.max(0, Math.floor((M.util - topo1) / lt));
+  // Linha sozinha no alto da folha: o Word leva mais uma junto (controle de linhas órfãs).
+  const naUltima = (med.lC - naFolha1) % porFolha || porFolha;
+  let usado = med.lC <= naFolha1 ? topo1 + med.lC * lt : Math.max(naUltima, 2) * lt;
+  // Se nem o "Bujaru/PA, data." cabe, o Word o leva para a folha seguinte com 2 linhas do texto.
+  if (usado + 12 + M.linha > M.util) usado = 2 * lt;
+  return M.util - usado - 12 - M.linha; // espaço depois do texto + linha "Bujaru/PA, data."
+}
+
+// Como ficam as assinaturas (regra 3b do usuário, na ordem): 1) uma coluna, se couberem com o fim do texto;
+// 2) duas colunas; 3) duas colunas com a entrelinha do texto um pouco menor (como no LIVRO: 17,75 a 17 pt para 18 pt,
+// fonte igual); 4) duas colunas na entrelinha normal (último caso: o Word desce linhas do texto para não separar).
+const ENTRELINHAS_MINUTA = [148, 146, 144, 142];
+function planoAssinaturas(blocos, med) {
+  const M = WORD_MEDIDAS, n = b => b.split('<br>').length, folga = 6; // erro medido no Word: até 1,2 pt
+  const uma = blocos.reduce((s, b) => s + M.espacoAss + n(b) * M.linhaAss, 0);
+  let duas = 0; for (let i = 0; i < blocos.length; i += 2) duas += M.espacoAss + Math.max(...blocos.slice(i, i + 2).map(n)) * M.linhaAss;
+  const sobra = sobraUltimaPagina(med);
+  if (sobra === null) return { colunas: blocos.length > 1, entrelinha: 150, sobra };
+  if (sobra >= uma + folga || blocos.length < 2) return { colunas: false, entrelinha: 150, sobra };
+  if (sobra >= duas + folga) return { colunas: true, entrelinha: 150, sobra };
+  for (const pct of ENTRELINHAS_MINUTA) {
+    const s = sobraUltimaPagina(med, M.linha * pct / 150);
+    if (s >= duas + folga) return { colunas: true, entrelinha: pct, sobra: s };
+  }
+  return { colunas: true, entrelinha: 150, sobra, apertado: true };
+}
+
+// Último caso da regra: avisa quem gera a minuta (o Word vai descer linhas do texto para não separar as assinaturas).
+function avisarPlanoAssinaturas() {
+  if (blobMinutaWord.plano && blobMinutaWord.plano.apertado)
+    aviso('Atenção: as assinaturas não cabem na última folha nem em 2 colunas com a entrelinha menor. O Word vai descer ' +
+      'linhas do texto para a folha seguinte (fica um espaço no fim da folha anterior). Ajuste o texto se quiser evitar.', 'erro');
+}
+
+// Assinaturas no Word (regra do usuário: nunca sozinhas, nunca partidas, sem lacuna). Uma coluna quando cabem na
+// última folha junto com o fim do texto; senão, grade em 2 colunas (quem lavra centralizado na última linha, se ímpar),
+// com o mesmo 1 cm para assinar. Cada bloco fica inteiro ("manter linhas juntas") e preso ao seguinte.
+// Sem medida possível no aparelho, usa as 2 colunas, que ocupam menos espaço.
+function assinaturasWord(blocos, colunas) {
+  const est = ultimo => 'text-align:center;margin:1cm 0 0;line-height:normal;page-break-inside:avoid;mso-pagination:widow-orphan lines-together' +
+    (ultimo ? '' : ';page-break-after:avoid');
+  if (!colunas) return blocos.map((b, i) => `<p class="ass" style="${est(i === blocos.length - 1)}">${b}</p>`).join('');
+  const pares = []; for (let i = 0; i < blocos.length; i += 2) pares.push(blocos.slice(i, i + 2));
+  const cel = (b, ultima, larga) => `<td${larga ? ' colspan="2"' : ''} style="width:${larga ? 100 : 50}%;vertical-align:top;padding:0 4pt">` +
+    `<p class="ass" style="${est(ultima)}">${b.replace(/^_+/, '______________________________')}</p></td>`;
+  return '<table class="ass2" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">' +
+    pares.map((par, i) => { const ult = i === pares.length - 1;
+      return `<tr style="page-break-inside:avoid">${par.length === 2 ? cel(par[0], ult) + cel(par[1], ult) : cel(par[0], ult, true)}</tr>`; }).join('') +
+    '</table>';
+}
+
 function blobMinutaWord() {
   gerarMinuta();
-  // Folha A4 (21 × 29,7 cm), margens 2 cm e 3 cm à esquerda — as mesmas da folha mostrada na tela.
-  const estilo = `@page Folha{size:21cm 29.7cm;margin:2cm 2cm 2cm 3cm;mso-header-margin:1cm;mso-footer-margin:1cm;mso-paper-source:0}
+  // Folha A4 (21 × 29,7 cm), margens 2 cm e 3 cm à esquerda. Timbre e Livro/Data/Folhas no CABEÇALHO de todas as
+  // folhas (pedido do usuário, como na lavrada): faixa encostada no topo; o texto começa logo abaixo (4,9 cm).
+  const estilo = `@page Folha{size:21cm 29.7cm;margin:4.9cm 2cm 2cm 3cm;mso-header-margin:0;mso-footer-margin:1cm;mso-header:h1;mso-paper-source:0}
     div.Folha{page:Folha}
     body{font-family:'Arial Narrow',Arial,sans-serif;font-size:12pt} p{text-align:justify;margin:0 0 12pt;line-height:150%}
     .dir{text-align:right} .c{text-align:center} .corpo{text-indent:3.75cm} .red{color:#FF0000;font-weight:bold}
@@ -1095,11 +1185,24 @@ function blobMinutaWord() {
   // O Word só lê UMA classe por elemento ("corpo junto" vira só "corpo") e não leva "manter com o próximo" de <div>:
   // por isso o fim do texto, a data e as assinaturas vão como <p> com o estilo escrito no próprio elemento – assim as
   // assinaturas nunca ficam sozinhas na última página quando a minuta é aberta direto no Word (regra do usuário).
-  const corpoWord = $('mDoc').innerHTML
-    .replace(/^<div class="timbre">[\s\S]*?<\/div><\/div><\/div>/, timbreHTML('word')).replace(/<table class="ato"[\s\S]*?<\/table>/, atoHTML('word'))
-    .replace(/<div class="ass( junto)?">([\s\S]*?)<\/div>/g, (_, j, x) => `<p class="ass" style="text-align:center;margin:1cm 0 0;line-height:normal;page-break-inside:avoid${j ? ';page-break-after:avoid' : ''}">${x}</p>`)
+  // Assinaturas: uma coluna se couberem na última folha com o fim do texto; senão, 2 colunas (planoAssinaturas).
+  const blocos = [], med = linhasMinutaWord();
+  let plano = { colunas: false, entrelinha: 150 };
+  let corpoWord = $('mDoc').innerHTML
+    .replace(/^<div class="timbre">[\s\S]*?<\/div><\/div><\/div>/, '').replace(/<table class="ato"[\s\S]*?<\/table>/, '')
+    .replace(/(?:<div class="ass(?: junto)?">[\s\S]*?<\/div>)+/, grupo => {
+      grupo.replace(/<div class="ass(?: junto)?">([\s\S]*?)<\/div>/g, (_, x) => blocos.push(x));
+      return '\u0000ASS\u0000'; })
     .replace(/<p class="([^"]*)\bjunto\b([^"]*)">/g, (_, a, b) => `<p class="${(a + b).trim()}" style="page-break-after:avoid${/\bdata\b/.test(a + b) ? ';margin-bottom:0' : ''}">`);
-  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">${word}<style>${estilo}</style></head><body><div class="Folha">${corpoWord}</div></body></html>`;
+  if (blocos.length) plano = planoAssinaturas(blocos, med);
+  corpoWord = corpoWord.replace('\u0000ASS\u0000', () => assinaturasWord(blocos, plano.colunas));
+  if (plano.entrelinha !== 150) corpoWord = corpoWord.replace('<p class="corpo" style="page-break-after:avoid', `<p class="corpo" style="page-break-after:avoid;line-height:${plano.entrelinha}%`);
+  blobMinutaWord.plano = plano; // para conferência (testes)
+  // Definição do cabeçalho no fim do corpo, fora da folha (o Word a usa como cabeçalho e não a mostra no texto).
+  const cab = timbreHTML('word') + atoHTML('word').replace(/margin:0 0 10pt /, 'margin:0 0 0 ');
+  // A linha da tabela tem altura exata de 1 pt: a definição não ocupa espaço nem cria folha em branco no fim.
+  const defCab = `<table style="margin-left:50in" cellpadding="0" cellspacing="0"><tr style="height:1pt;mso-height-rule:exactly"><td><div style="mso-element:header" id="h1">${cab}</div></td></tr></table>`;
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">${word}<style>${estilo}</style></head><body><div class="Folha">${corpoWord}${defCab}</div></body></html>`;
   return new Blob(['﻿', doc], { type: 'application/msword' });
 }
 
@@ -1164,7 +1267,7 @@ function iniciarFerramentas() {
   $('m_folhas').addEventListener('blur', () => { $('m_folhas').value = formatarFolhas(v('m_folhas')); });
   $('m_data').value = hojeISO();
   $('mEsc').addEventListener('change', () => minutaDaEscritura($('mEsc').value));
-  $('mWord').addEventListener('click', () => baixarBlob(blobMinutaWord(), nomeArquivoMinuta() + '.doc'));
+  $('mWord').addEventListener('click', () => { baixarBlob(blobMinutaWord(), nomeArquivoMinuta() + '.doc'); avisarPlanoAssinaturas(); });
   $('mCopiar').addEventListener('click', () => copiar($('mDoc').innerText, $('mCopiar')));
   $('mSalvar').addEventListener('click', async () => {
     const id = $('mEsc').value;
@@ -1173,6 +1276,7 @@ function iniciarFerramentas() {
     try {
       const nomeArq = await Esc.salvarNaSubpasta(id, '01 - MINUTA', nomeArquivoMinuta() + '.doc', blobMinutaWord());
       aviso('Minuta salva em 01 - MINUTA: ' + nomeArq);
+      avisarPlanoAssinaturas();
     } catch (e) { aviso(e.message, 'erro'); } finally { b.disabled = false; }
   });
   aoMudarModal();

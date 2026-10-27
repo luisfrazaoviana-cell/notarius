@@ -141,11 +141,19 @@ const Esc = {
     return Nuvem.acharOuCriarPasta(nomeSub, id);
   },
 
+  // Arquivo com o mesmo nome = versão atualizada: substitui no mesmo arquivo (o Drive guarda as versões antigas),
+  // nunca cria cópia "(2)" – pedido do usuário em 27/10/2026, sempre com a autorização dele.
   async salvarNaSubpasta(escId, nomeSub, nomeArq, blob) {
     const e = await Reg.get('escrituras', escId);
     const sp = await this.subpasta(e, nomeSub);
-    const nomes = new Set((await Nuvem.listar(sp.id)).map(f => f.nome));
-    const f = await Nuvem.enviar(sp.id, nomeArq, blob, nomes);
+    const lista = await Nuvem.listar(sp.id);
+    const igual = lista.find(f => f.nome === nomeArq);
+    if (igual) {
+      if (!await confirmar('Substituir arquivo', `Já existe "${nomeArq}" em ${nomeSub}. Substituir pela versão nova? (A versão antiga fica no histórico do Drive.)`, 'Substituir', 'Cancelar'))
+        throw new Error('Nada foi salvo.');
+      return (await Nuvem.atualizar(igual.id, blob)).nome || nomeArq;
+    }
+    const f = await Nuvem.enviar(sp.id, nomeArq, blob, new Set(lista.map(f => f.nome)));
     return f.nome;
   },
 

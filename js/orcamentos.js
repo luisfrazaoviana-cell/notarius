@@ -133,7 +133,7 @@ const Orc = {
       if (ct.cargo) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(60); doc.text(ct.cargo, CX, y + 5, { align: 'center' }); }
       doc.setTextColor(0);
     }
-    return { blob: doc.output('blob'), nome: `ORÇAMENTO COM QRCODE ${nomePasta(ct.siglaArquivo || ct.nome, 40)} - ${nomePasta(nomeInt, 80)}.pdf` };
+    return { blob: doc.output('blob'), nome: `ORÇAMENTO ${nomePasta(ct.siglaArquivo || ct.nome, 40)} - ${nomePasta(nomeInt, 80)}.pdf` };
   },
 
   async salvar(soBaixar) {

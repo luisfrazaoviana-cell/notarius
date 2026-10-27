@@ -766,10 +766,13 @@ function itCertidoes(c) {
       blocos.push(`**${ct.tit}**, ${ct.pl ? 'emitidas' : 'emitida'} em ${D}, sob ${ct.pl ? 'os nºs' : 'o nº'} ${N}, em favor ${fem ? 'da' : 'do'} ${quemP}${res2}`);
     });
   });
-  // Empresa alienante: CND conjunta RFB/PGFN, que abrange as contribuições previdenciárias (art. 262, I e II, do CNSNR).
-  if ((c.m === 'cv' || c.m === 'dacao') && temCNPJ('m_aQual')) blocos.push(trad
-    ? `**Certidão Negativa de Débitos relativos aos Tributos Federais e à Dívida Ativa da União**, expedida conjuntamente pela Receita Federal do Brasil e pela Procuradoria-Geral da Fazenda Nacional, abrangendo as contribuições previdenciárias, em nome da pessoa jurídica ${art.do(GA)} ${R([GA, baseA])}: ${F('m_cndPJ', 'nº e data da CND conjunta RFB/PGFN')}, nos termos do art. 262, I e II, do CNSNR`
-    : `certidão negativa de débitos relativos aos tributos federais e à dívida ativa da União, conjunta da Receita Federal do Brasil e da Procuradoria-Geral da Fazenda Nacional, que abrange as contribuições previdenciárias, em nome da pessoa jurídica alienante: ${F('m_cndPJ', 'nº e data da CND conjunta RFB/PGFN')} (art. 262, I e II, do CNSNR)`);
+  // Empresa alienante: CND conjunta RFB/PGFN, que abrange as contribuições previdenciárias (art. 262, I e II, do CNSNR),
+  // no mesmo formato das demais certidões, como na 137 (aprovado pelo usuário em 27/10/2026). Campo: "código | data".
+  if ((c.m === 'cv' || c.m === 'dacao') && temCNPJ('m_aQual')) {
+    const [cod, dt] = v('m_cndPJ').split('|').map(s => (s || '').trim());
+    const emp = pessoas[0].nome ? `“${pessoas[0].nome.toUpperCase()}”` : '“[[razão social xxx]]”';
+    blocos.push(`**CERTIDÃO NEGATIVA DE DÉBITOS RELATIVOS AOS TRIBUTOS FEDERAIS E À DÍVIDA ATIVA DA UNIÃO – RFB/PGFN**, emitida em ${dt || '[[data de emissão xxx]]'}, sob o código de controle nº ${cod || '[[código de controle xxx]]'}, em favor da ${emp}, nos termos do art. 262, I e II, do CNSNR`);
+  }
   const ciencia = positiva ? (trad
     ? `. O teor das certidões com resultado positivo foi lido e explicado às **PARTES**, declarando ${art.o(G)} ${R([G, base])} ter ciência dos riscos e prosseguir com a aquisição`
     : `. O teor das certidões positivas foi lido e explicado às partes, e ${art.o(G)} ${R([G, base])} ${vb(G, 'declara', 'declaram')} ciência dos riscos e ${vb(G, 'prossegue', 'prosseguem')} com a aquisição`) : '';

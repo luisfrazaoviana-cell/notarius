@@ -1436,8 +1436,9 @@ function linhasMinutaWord() {
   };
   const lE = linhas(ementa, '0'), lC = linhas(corpo, narrow ? '3.75cm' : 3.75 / 0.82 + 'cm');
   med.remove();
-  // Conferido no Word (14 minutas de 104 a 173 linhas): o texto dá sempre 2 linhas a menos que no navegador.
-  return { lE, lC: lC - 2 };
+  // Conferido no Word: 14 minutas reais (104 a 173 linhas) deram 2 linhas a menos que no navegador; 22 modelos com campos
+  // em vermelho (27/10/2026) deram de 0 a 3 a menos (o mais comum, 1). Fica 1, e a folga do plano cobre o resto.
+  return { lE, lC: lC - 1 };
 }
 
 // Quanto sobra (em pontos) na última folha do Word depois do "Bujaru/PA, data.", com a entrelinha do texto "lt" (pt).
@@ -1456,20 +1457,30 @@ function sobraUltimaPagina(med, lt = WORD_MEDIDAS.linha) {
 // Como ficam as assinaturas (regra 3b do usuário, na ordem): 1) uma coluna, se couberem com o fim do texto;
 // 2) duas colunas; 3) duas colunas com a entrelinha do texto um pouco menor (como no LIVRO: 17,75 a 17 pt para 18 pt,
 // fonte igual); 4) duas colunas na entrelinha normal (último caso: o Word desce linhas do texto para não separar).
-const ENTRELINHAS_MINUTA = [148, 146, 144, 142];
+const ENTRELINHAS_MINUTA = [148, 146, 144, 142], FOLGA_ASSINATURAS = 24;
 function planoAssinaturas(blocos, med) {
-  const M = WORD_MEDIDAS, n = b => b.split('<br>').length, folga = 6; // erro medido no Word: até 1,2 pt
+  // Folga de pouco mais de 1 linha: a estimativa do texto erra até 1 linha para mais ou para menos (medido em 27/10/2026;
+  // com 6 pt o Word deixava lacuna antes das assinaturas). Cobre também o parágrafo final de 1 pt depois da tabela do timbre.
+  const M = WORD_MEDIDAS, n = b => b.split('<br>').length, folga = FOLGA_ASSINATURAS;
   const uma = blocos.reduce((s, b) => s + M.espacoAss + n(b) * M.linhaAss, 0);
   let duas = 0; for (let i = 0; i < blocos.length; i += 2) duas += M.espacoAss + Math.max(...blocos.slice(i, i + 2).map(n)) * M.linhaAss;
   const sobra = sobraUltimaPagina(med);
   if (sobra === null) return { colunas: blocos.length > 1, entrelinha: 150, sobra };
-  if (sobra >= uma + folga || blocos.length < 2) return { colunas: false, entrelinha: 150, sobra };
-  if (sobra >= duas + folga) return { colunas: true, entrelinha: 150, sobra };
+  if (sobra >= uma + folga) return { colunas: false, entrelinha: 150, sobra };
+  // Uma assinatura só (aditamento): não há 2 colunas; tenta a entrelinha menor.
+  const alvo = blocos.length < 2 ? uma : duas, colunas = blocos.length > 1;
+  if (colunas && sobra >= duas + folga) return { colunas, entrelinha: 150, sobra };
   for (const pct of ENTRELINHAS_MINUTA) {
     const s = sobraUltimaPagina(med, M.linha * pct / 150);
-    if (s >= duas + folga) return { colunas: true, entrelinha: pct, sobra: s };
+    if (s >= alvo + folga) return { colunas, entrelinha: pct, sobra: s };
   }
-  return { colunas: true, entrelinha: 150, sobra, apertado: true };
+  // Antes do último caso (que sempre deixa espaço no fim da folha), tenta com a folga justa da medição antiga (6 pt):
+  // se a estimativa acertar, cabe; se errar, o resultado é o mesmo do último caso.
+  for (const pct of [150, ...ENTRELINHAS_MINUTA]) {
+    const s = sobraUltimaPagina(med, M.linha * pct / 150);
+    if (s >= alvo + 6) return { colunas, entrelinha: pct, sobra: s, justo: true };
+  }
+  return { colunas, entrelinha: 150, sobra, apertado: true };
 }
 
 // Último caso da regra: avisa quem gera a minuta (o Word vai descer linhas do texto para não separar as assinaturas).
@@ -1526,7 +1537,10 @@ function blobMinutaWord() {
   const cab = timbreHTML('word') + atoHTML('word').replace(/margin:0 0 10pt /, 'margin:0 0 0 ');
   // A linha da tabela tem altura exata de 1 pt: a definição não ocupa espaço nem cria folha em branco no fim.
   const defCab = `<table style="margin-left:50in" cellpadding="0" cellspacing="0"><tr style="height:1pt;mso-height-rule:exactly"><td><div style="mso-element:header" id="h1">${cab}</div></td></tr></table>`;
-  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">${word}<style>${estilo}</style></head><body><div class="Folha">${corpoWord}${defCab}</div></body></html>`;
+  // Depois de uma tabela o Word sempre põe um parágrafo; com o estilo normal (1,5 e 12 pt depois) ele sozinho criava uma
+  // folha em branco quando as assinaturas iam até o fim da folha. Fica com 1 pt de altura.
+  const fimDoc = '<p style="margin:0;line-height:1pt;mso-line-height-rule:exactly;font-size:1pt">&nbsp;</p>';
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">${word}<style>${estilo}</style></head><body><div class="Folha">${corpoWord}${defCab}${fimDoc}</div></body></html>`;
   return new Blob(['﻿', doc], { type: 'application/msword' });
 }
 

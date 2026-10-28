@@ -1144,6 +1144,109 @@ const BIB_TIPOS = {
   'bib-substabelecimento': { arq: 'SUBSTABELECIMENTO DE PROCURACAO', rotulo: 'Substabelecimento de procuração', A: ['NOME DO PROCURADOR'], lA: 'Procurador (substabelecente)', B: ['NOME DO NOVO PROCURADOR'], lB: 'Novo procurador (substabelecido)' },
   'bib-revogacao': { arq: 'REVOGACAO DE PROCURACAO', rotulo: 'Revogação de procuração', A: ['NOME DO MANDANTE'], lA: 'Mandante (revogante)', B: null, lB: '' }
 };
+// Papéis de cada grupo nos modelos (para a concordância de gênero e número). "ind": papel de uma pessoa só
+// (primeiro/segundo convivente etc.) – só muda o gênero.
+const BIB_PAPEIS = {
+  'bib-doacao': { A: ['DOADOR'], B: ['DONATÁRIO'] }, 'bib-doacao-usufruto': { A: ['DOADOR', 'USUFRUTUÁRIO'], B: ['DONATÁRIO', 'NU-PROPRIETÁRIO'] },
+  'bib-permuta': { A: ['PRIMEIRO PERMUTANTE'], B: ['SEGUNDO PERMUTANTE'], ind: true },
+  'bib-cessao-posse': { A: ['CEDENTE'], B: ['CESSIONÁRIO'] }, 'bib-cessao-heranca': { A: ['CEDENTE'], B: ['CESSIONÁRIO'] },
+  'bib-uniao': { A: [], B: [], ind: true }, 'bib-uniao-dissolucao': { A: [], B: [], ind: true }, 'bib-pacto': { A: [], B: [], ind: true },
+  'bib-emancipacao': { A: [], B: ['EMANCIPADO'] },
+  'bib-divisao': { A: ['PRIMEIRO CONDÔMINO'], B: ['SEGUNDO CONDÔMINO'], ind: true },
+  'bib-usufruto': { A: ['NU-PROPRIETÁRIO'], B: ['USUFRUTUÁRIO'] }, 'bib-usufruto-renuncia': { A: ['RENUNCIANTE'], B: ['NU-PROPRIETÁRIO'] },
+  'bib-onus': { A: ['INSTITUIDOR'], B: ['BENEFICIÁRIO'] }, 'bib-onus-cancelamento': { A: ['OUTORGANTE'], B: ['OUTORGADO'] },
+  'bib-substabelecimento': { A: ['SUBSTABELECENTE'], B: ['SUBSTABELECIDO'] }, 'bib-revogacao': { A: ['REVOGANTE'], B: [] }
+};
+// Flexão de um papel (maiúsculas ou só a inicial): DOADOR → DOADORA/DOADORES/DOADORAS; CEDENTE → CEDENTES; etc.
+function flexPapel(p, fem, pl) {
+  const up = p === p.toUpperCase(), P = p.toUpperCase();
+  const uma = w => {
+    let r = w;
+    if (/^(PRIMEIRO|SEGUNDO)$/.test(w)) r = fem ? w.slice(0, -1) + 'A' : w;
+    else if (/OR$/.test(w)) r = fem ? w + 'A' : w;
+    else if (/(ÁRIO|ADO|IDO|ÔMINO)$/.test(w)) r = fem ? w.slice(0, -1) + 'A' : w;
+    if (pl) r = /OR$/.test(r) ? r + 'ES' : /NU$/.test(r) ? r + 'S' : /(A|O|E)$/.test(r) ? r + 'S' : r;
+    return r;
+  };
+  const out = P.split(' ').map(x => x.split('-').map(uma).join('-')).join(' ');
+  return up ? out : out.charAt(0) + out.slice(1).toLowerCase();
+}
+// Verbos que vêm logo depois do papel nos modelos (singular → plural).
+const VERBOS_PLURAL = { declara: 'declaram', cede: 'cedem', 'obriga-se': 'obrigam-se', aceita: 'aceitam', fica: 'ficam', 'deverá': 'deverão',
+  'poderá': 'poderão', 'é': 'são', reserva: 'reservam', institui: 'instituem', autoriza: 'autorizam', 'dê': 'deem', transmite: 'transmitem',
+  renuncia: 'renunciam', foi: 'foram', outorgou: 'outorgaram', substabelece: 'substabelecem', requer: 'requerem', doa: 'doam',
+  responde: 'respondem', dispensa: 'dispensam', 'DISPENSA': 'DISPENSAM', compromete: 'comprometem', 'concede': 'concedem', 'concedem': 'concedem' };
+function concordarBiblioteca(s, m, c) {
+  const pap = BIB_PAPEIS[m];
+  if (!pap || !s) return s;
+  let x = s;
+  for (const [lado, G] of [['A', c.A], ['B', c.B]]) {
+    if (!G || !G.pessoas.length) continue;
+    const fem = G.g === 'F', pl = G.pl && !pap.ind;
+    if (!fem && !pl) continue;
+    const art = { o: fem ? (pl ? 'as' : 'a') : 'os', do: fem ? (pl ? 'das' : 'da') : 'dos', ao: fem ? (pl ? 'às' : 'à') : 'aos', pelo: fem ? (pl ? 'pelas' : 'pela') : 'pelos', no: fem ? (pl ? 'nas' : 'na') : 'nos',
+      denominado: fem ? (pl ? 'denominadas' : 'denominada') : 'denominados' };
+    const capz = w => w.charAt(0).toUpperCase() + w.slice(1);
+    for (const papel of pap[lado]) {
+      const novo = flexPapel(papel, fem, pl), esc = papel.replace(/[-]/g, '\\-');
+      // artigo/contração + **PAPEL** (+ verbo seguinte no plural)
+      x = x.replace(new RegExp(`(\\b(?:o|O|do|Do|ao|Ao|pelo|Pelo|no|No|denominado)\\s+)?\\*\\*${esc}\\*\\*(\\s+([\\wÀ-ú-]+))?`, 'g'), (m0, a, resto, verbo) => {
+        let ar = '';
+        if (a) { const k = a.trim(), base = k.toLowerCase(), t = art[base]; ar = (k === base ? t : capz(t)) + a.slice(k.length); }
+        const v = verbo && pl && VERBOS_PLURAL[verbo] ? resto.replace(verbo, VERBOS_PLURAL[verbo]) : (resto || '');
+        return `${ar}**${novo}**${v}`;
+      });
+      // ementa ("COMO DOADOR") e títulos dos itens ("OUTORGANTE / DOADOR", "DO OUTORGANTE DOADOR")
+      x = x.replace(new RegExp(`\\bCOMO ${esc}\\b`, 'g'), `COMO ${novo}`);
+      // o resto da frase que fala do papel (até o fim da frase ou o próximo papel): adjetivos, particípios e verbos
+      x = x.replace(new RegExp(`\\*\\*${novo.replace(/[-]/g, '\\-')}\\*\\*([^]*?)(?=[;:]|\\.\\s+[A-ZÁÉÍÓÚ_*]|\\.$|\\*\\*(?:${todosPapeis(pap).join('|')})\\*\\*|$)`, 'g'),
+        (m0, seg) => `**${novo}**` + concordarTrecho(seg, fem, pl));
+    }
+  }
+  return x;
+}
+// Todos os papéis de um tipo (na forma original e flexionada), para saber onde termina a frase de cada um.
+function todosPapeis(pap) {
+  const set = new Set();
+  for (const p of [...pap.A, ...pap.B]) for (const f of [false, true]) for (const n of [false, true]) set.add(flexPapel(p, f, n).replace(/[-]/g, '\\-'));
+  return [...set];
+}
+const CONC_FEM = { 'legítimo': 'legítima', 'proprietário': 'proprietária', 'possuidor': 'possuidora', 'interessado': 'interessada', 'nascido': 'nascida',
+  'autorizado': 'autorizada', 'cientificado': 'cientificada', 'procurador': 'procuradora', 'ele': 'ela' };
+const CONC_PL = { 'legítimo': 'legítimos', 'proprietário': 'proprietários', 'possuidor': 'possuidores', 'interessado': 'interessados', 'autorizado': 'autorizados',
+  'cientificado': 'cientificados', 'procurador': 'procuradores', 'ciente': 'cientes', 'ser': 'serem', 'receber': 'receberem', 'declara': 'declaram',
+  'reserva': 'reservam', 'doa': 'doam', 'cede': 'cedem', 'transfere': 'transferem', 'dá': 'dão', 'exerce': 'exercem', 'fica': 'ficam', 'poderá': 'poderão',
+  'renuncia': 'renunciam', 'RENUNCIA': 'RENUNCIAM', 'requer': 'requerem', 'substabelece': 'substabelecem', 'aceita': 'aceitam', 'dê': 'deem',
+  'autorize': 'autorizem', 'institui': 'instituem', 'transmite': 'transmitem', 'DISPENSA': 'DISPENSAM', 'obriga-se': 'obrigam-se', 'compromete': 'comprometem',
+  'deverá': 'deverão', 'responde': 'respondem' };
+function concordarTrecho(seg, fem, pl) {
+  return seg.replace(/(me |lhe )?([A-Za-zÀ-ú-]+)/g, (m0, pron, w) => {
+    if (pron) return m0; // "me foi dito": impessoal, não muda
+    let r = w;
+    if (pl && CONC_PL[w]) r = CONC_PL[w];
+    if (fem && CONC_FEM[w]) r = pl && CONC_PL[w] ? CONC_PL[w].replace(/os$/, 'as').replace(/ores$/, 'oras') : CONC_FEM[w];
+    return r;
+  });
+}
+function tituloConcordado(t, m, c) {
+  const pap = BIB_PAPEIS[m];
+  if (!pap) return t;
+  let x = t;
+  for (const [lado, G] of [['A', c.A], ['B', c.B]]) {
+    if (!G || !G.pessoas.length) continue;
+    const fem = G.g === 'F', pl = G.pl && !pap.ind;
+    if (!fem && !pl) continue;
+    for (const papel of pap[lado]) {
+      const esc = papel.replace(/[-]/g, '\\-');
+      if (!new RegExp(`(^|[ /])${esc}$`).test(x)) continue;
+      const geral = /^(DO |DA )?OUTORGANTE/.test(x) ? 'OUTORGANTE' : /OUTORGADO/.test(x) ? 'OUTORGADO' : '';
+      x = x.replace(new RegExp(`${esc}$`), flexPapel(papel, fem, pl));
+      if (geral && geral !== papel) x = x.replace(geral, flexPapel(geral, fem, pl));
+      x = x.replace(/^DO /, fem ? (pl ? 'DAS ' : 'DA ') : 'DOS ');
+    }
+  }
+  return x;
+}
 function modeloBiblioteca(m, trad) {
   const t = BIB_TIPOS[m], arq = `MODELO - ${t.arq} (${trad ? 'TRADICIONAL' : 'REVISADO'})`;
   return (typeof BIBLIOTECA_MODELOS !== 'undefined' ? BIBLIOTECA_MODELOS : []).find(d => d.arquivo === arq);
@@ -1170,16 +1273,20 @@ function gerarBiblioteca(c) {
   // Qualificações: a 1ª do modelo recebe a do grupo A e a 2ª a do grupo B (ordem do modelo = ordem das partes).
   let nq = 0;
   const qualificar = s => s.replace(/\[\[qualificação completa[^\]]*xxx\]\]/g, m0 => { const q = quals[nq++]; return q ? q.replace(/[.\s]+$/, '') : m0; });
-  const itens = d.itens.map(([tit, x]) => ({ tt: tit, tr: tit, x: preencher(qualificar(x)) }));
-  const aj = aplicarAjustes(c, itens, { ementa: preencher(d.ementa), fecho: d.fecho ? preencher(d.fecho) : undefined });
-  let corpo = preencher(d.abertura) + ' ' + aj.itens.map((it, i) => `__${romano(i + 1)} – ${it.tt}:__ ${it.x}`).join(' ');
+  // Concordância: os modelos estão no masculino singular; o papel de cada grupo segue o gênero e o número das partes.
+  const conc = s => concordarBiblioteca(s, c.m, c);
+  const itens = d.itens.map(([tit, x]) => { const t = tituloConcordado(tit, c.m, c); return { tt: t, tr: t, x: conc(preencher(qualificar(x))) }; });
+  const aj = aplicarAjustes(c, itens, { ementa: conc(preencher(d.ementa)), fecho: d.fecho ? conc(preencher(d.fecho)) : undefined });
+  let corpo = conc(preencher(d.abertura)) + ' ' + aj.itens.map((it, i) => `__${romano(i + 1)} – ${it.tt}:__ ${it.x}`).join(' ');
   if (c.trad && aj.fecho) corpo += ' ' + aj.fecho;
   // Assinaturas: a linha "NOME DO ..." de cada grupo vira uma linha por pessoa digitada (com o papel do modelo).
   const ass = [], feitos = new Set();
   for (const [n, r] of d.ass) {
     const g = tipo.A.includes(n) ? 'A' : (tipo.B || []).includes(n) ? 'B' : '';
     const G = g === 'A' ? c.A : g === 'B' ? c.B : null;
-    if (G && G.pessoas.length) { if (!feitos.has(g)) { G.pessoas.forEach(p => ass.push([p.nome.toUpperCase(), p.papel || r])); feitos.add(g); } }
+    // papel no gênero de cada pessoa (pela qualificação digitada): "Doador" → "Doadora"
+    const papelDe = (p, qual) => p.papel || r.split(' ').map(w => w === 'e' || !BIB_PAPEIS[c.m] ? w : flexPapel(w, generoPessoa(p.nome, v(qual), G.g) === 'F', false)).join(' ');
+    if (G && G.pessoas.length) { if (!feitos.has(g)) { G.pessoas.forEach(p => ass.push([p.nome.toUpperCase(), papelDe(p, g === 'A' ? 'm_aQual' : 'm_bQual')])); feitos.add(g); } }
     else ass.push([n === 'LUÍS ALBERTO FRAZÃO MODESTO' ? (ct.lavrador || n) : n, r]);
   }
   const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;

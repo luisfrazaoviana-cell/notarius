@@ -562,6 +562,7 @@ function contexto() {
       : /compra|venda/i.test(nat) || !nat ? ['VENDEDOR', 'COMPRADOR'] : ['OUTORGANTE', 'OUTORGADO'];
     c.A = grupo('m_aNomes', v('m_aGen')); c.rA = rA; c.B = grupo('m_bNomes', v('m_bGen')); c.rB = rB;
   }
+  if (BIB_TIPOS[m]) { c.A = grupo('m_aNomes', v('m_aGen')); c.rA = 'OUTORGANTE'; c.B = grupo('m_bNomes', v('m_bGen')); c.rB = 'OUTORGADO'; }
   c.prop = m === 'inventario' ? [c.Fal, c.rFal] : [c.A, c.rA];
   c.adq = m === 'cv' || m === 'dacao' ? [c.B, c.rB] : [c.A, c.rA];
   // Matrículas: uma por linha, "número | descrição". Mais de uma = texto no plural ("os imóveis").
@@ -1122,6 +1123,70 @@ function gerarCorrecao(c) {
   mostrarAvisos(ad ? ['Aditamento: só para erro evidente, sem mudar a vontade das partes (art. 385 do CNSNR). Se o erro foi do cartório, o ato é gratuito e usa o selo Gratuito (art. 386, § 1º).'] : []);
 }
 
+/* Outros atos (modelos da biblioteca aprovados pelo usuário em 27–28/10/2026, em biblioteca.js): o texto é o do modelo,
+   sem mudança; o app preenche as partes (1ª qualificação = grupo A, 2ª = grupo B), os nomes (onde o modelo diz
+   "NOME DO ..."), a data e o selo. O resto fica em vermelho para completar em "Ajustar o texto de cada item". */
+const BIB_TIPOS = {
+  'bib-doacao': { arq: 'ESCRITURA DE DOACAO', rotulo: 'Doação', A: ['NOME DO DOADOR'], lA: 'Doadores', B: ['NOME DO DONATÁRIO'], lB: 'Donatários' },
+  'bib-doacao-usufruto': { arq: 'ESCRITURA DE DOACAO COM RESERVA DE USUFRUTO', rotulo: 'Doação com reserva de usufruto', A: ['NOME DO DOADOR'], lA: 'Doadores (usufrutuários)', B: ['NOME DO DONATÁRIO'], lB: 'Donatários (nu-proprietários)' },
+  'bib-permuta': { arq: 'ESCRITURA DE PERMUTA', rotulo: 'Permuta', A: ['NOME DO PRIMEIRO PERMUTANTE'], lA: 'Primeiro permutante', B: ['NOME DO SEGUNDO PERMUTANTE'], lB: 'Segundo permutante' },
+  'bib-cessao-posse': { arq: 'ESCRITURA DE CESSAO DE DIREITOS POSSESSORIOS', rotulo: 'Cessão de direitos possessórios', A: ['NOME DO CEDENTE'], lA: 'Cedentes', B: ['NOME DO CESSIONÁRIO'], lB: 'Cessionários' },
+  'bib-cessao-heranca': { arq: 'ESCRITURA DE CESSAO DE DIREITOS HEREDITARIOS', rotulo: 'Cessão de direitos hereditários', A: ['NOME DO CEDENTE'], lA: 'Cedentes (herdeiros)', B: ['NOME DO CESSIONÁRIO'], lB: 'Cessionários' },
+  'bib-uniao': { arq: 'ESCRITURA DECLARATORIA DE UNIAO ESTAVEL', rotulo: 'União estável – declaratória', A: ['NOME DO PRIMEIRO CONVIVENTE'], lA: 'Primeiro convivente', B: ['NOME DO SEGUNDO CONVIVENTE'], lB: 'Segundo convivente' },
+  'bib-uniao-dissolucao': { arq: 'ESCRITURA DE DISSOLUCAO DE UNIAO ESTAVEL', rotulo: 'União estável – dissolução', A: ['NOME DO PRIMEIRO CONVIVENTE'], lA: 'Primeiro convivente', B: ['NOME DO SEGUNDO CONVIVENTE'], lB: 'Segundo convivente' },
+  'bib-pacto': { arq: 'ESCRITURA DE PACTO ANTENUPCIAL', rotulo: 'Pacto antenupcial', A: ['NOME DO PRIMEIRO NUBENTE'], lA: 'Primeiro nubente', B: ['NOME DO SEGUNDO NUBENTE'], lB: 'Segundo nubente' },
+  'bib-emancipacao': { arq: 'ESCRITURA DE EMANCIPACAO', rotulo: 'Emancipação', A: ['NOMES DOS PAIS', 'NOME DO PAI', 'NOME DA MÃE'], lA: 'Pais (outorgantes)', B: ['NOME DO MENOR'], lB: 'Menor emancipado' },
+  'bib-divisao': { arq: 'ESCRITURA DE DIVISAO AMIGAVEL E EXTINCAO DE CONDOMINIO', rotulo: 'Divisão amigável / extinção de condomínio', A: ['NOME DO PRIMEIRO CONDÔMINO'], lA: 'Primeiro condômino', B: ['NOME DO SEGUNDO CONDÔMINO'], lB: 'Segundo condômino', todos: ['NOMES DOS CONDÔMINOS'] },
+  'bib-usufruto': { arq: 'ESCRITURA DE INSTITUICAO DE USUFRUTO', rotulo: 'Instituição de usufruto', A: ['NOME DO PROPRIETÁRIO'], lA: 'Proprietário (nu-proprietário)', B: ['NOME DO USUFRUTUÁRIO'], lB: 'Usufrutuário' },
+  'bib-usufruto-renuncia': { arq: 'ESCRITURA DE RENUNCIA DE USUFRUTO', rotulo: 'Renúncia de usufruto', A: ['NOME DO USUFRUTUÁRIO'], lA: 'Usufrutuário (renunciante)', B: ['NOME DO NU-PROPRIETÁRIO'], lB: 'Nu-proprietário' },
+  'bib-onus': { arq: 'ESCRITURA DE INSTITUICAO DE ONUS', rotulo: 'Instituição de ônus', A: ['NOME DO PROPRIETÁRIO'], lA: 'Proprietário (instituidor)', B: ['NOME DO BENEFICIÁRIO'], lB: 'Beneficiário' },
+  'bib-onus-cancelamento': { arq: 'ESCRITURA DE CANCELAMENTO DE ONUS', rotulo: 'Quitação e cancelamento de ônus', A: ['NOME DO BENEFICIÁRIO DO ÔNUS'], lA: 'Beneficiário do ônus (outorgante)', B: ['NOME DO PROPRIETÁRIO'], lB: 'Proprietário (outorgado)' },
+  'bib-substabelecimento': { arq: 'SUBSTABELECIMENTO DE PROCURACAO', rotulo: 'Substabelecimento de procuração', A: ['NOME DO PROCURADOR'], lA: 'Procurador (substabelecente)', B: ['NOME DO NOVO PROCURADOR'], lB: 'Novo procurador (substabelecido)' },
+  'bib-revogacao': { arq: 'REVOGACAO DE PROCURACAO', rotulo: 'Revogação de procuração', A: ['NOME DO MANDANTE'], lA: 'Mandante (revogante)', B: null, lB: '' }
+};
+function modeloBiblioteca(m, trad) {
+  const t = BIB_TIPOS[m], arq = `MODELO - ${t.arq} (${trad ? 'TRADICIONAL' : 'REVISADO'})`;
+  return (typeof BIBLIOTECA_MODELOS !== 'undefined' ? BIBLIOTECA_MODELOS : []).find(d => d.arquivo === arq);
+}
+function gerarBiblioteca(c) {
+  const ct = C(), tipo = BIB_TIPOS[c.m], d = modeloBiblioteca(c.m, c.trad);
+  if (!d) { $('mDoc').innerHTML = '<p class="red">Modelo não encontrado na biblioteca (biblioteca.js).</p>'; return; }
+  const nomes = G => G && G.pessoas.length ? G.pessoas.map(p => p.nome.toUpperCase()).join(', ').replace(/, ([^,]*)$/, ' E $1') : '';
+  const nA = nomes(c.A), nB = nomes(c.B);
+  const troca = [];
+  tipo.A.forEach(k => nA && troca.push([k, nA]));
+  (tipo.B || []).forEach(k => nB && troca.push([k, nB]));
+  (tipo.todos || []).forEach(k => (nA || nB) && troca.push([k, [nA, nB].filter(Boolean).join(' E ')]));
+  const data = dataExtenso(v('m_data')), selo = v('m_selo');
+  const quals = [v('m_aQual'), v('m_bQual')];
+  const preencher = s => {
+    if (!s) return s;
+    let x = s;
+    if (data) x = x.replace('aos [[data da lavratura por extenso xxx]] ([[dd/mm/aaaa xxx]])', data);
+    if (selo) x = x.split('[[número do selo xxx]]').join(selo);
+    for (const [k, nome] of troca) x = x.split(`[[${k} xxx]]`).join(nome);
+    return x;
+  };
+  // Qualificações: a 1ª do modelo recebe a do grupo A e a 2ª a do grupo B (ordem do modelo = ordem das partes).
+  let nq = 0;
+  const qualificar = s => s.replace(/\[\[qualificação completa[^\]]*xxx\]\]/g, m0 => { const q = quals[nq++]; return q ? q.replace(/[.\s]+$/, '') : m0; });
+  const itens = d.itens.map(([tit, x]) => ({ tt: tit, tr: tit, x: preencher(qualificar(x)) }));
+  const aj = aplicarAjustes(c, itens, { ementa: preencher(d.ementa), fecho: d.fecho ? preencher(d.fecho) : undefined });
+  let corpo = preencher(d.abertura) + ' ' + aj.itens.map((it, i) => `__${romano(i + 1)} – ${it.tt}:__ ${it.x}`).join(' ');
+  if (c.trad && aj.fecho) corpo += ' ' + aj.fecho;
+  // Assinaturas: a linha "NOME DO ..." de cada grupo vira uma linha por pessoa digitada (com o papel do modelo).
+  const ass = [], feitos = new Set();
+  for (const [n, r] of d.ass) {
+    const g = tipo.A.includes(n) ? 'A' : (tipo.B || []).includes(n) ? 'B' : '';
+    const G = g === 'A' ? c.A : g === 'B' ? c.B : null;
+    if (G && G.pessoas.length) { if (!feitos.has(g)) { G.pessoas.forEach(p => ass.push([p.nome.toUpperCase(), p.papel || r])); feitos.add(g); } }
+    else ass.push([n === 'LUÍS ALBERTO FRAZÃO MODESTO' ? (ct.lavrador || n) : n, r]);
+  }
+  const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
+  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('ementa', aj.ementa) + fimMinuta(corpo, ct, ass);
+  mostrarAvisos(['Modelo da biblioteca: os dados que o formulário não tem ficam em vermelho – complete em "Ajustar o texto de cada item".']);
+}
+
 // Corpo + local/data + assinaturas. Regras do usuário: assinaturas nunca sozinhas numa página (o fim do texto,
 // a data e as assinaturas ficam presos uns aos outros) e nunca duas linhas em branco seguidas (segurança).
 function fimMinuta(corpo, ct, ass) {
@@ -1239,6 +1304,7 @@ function gerarMinuta() {
   const c = contexto();
   if (c.m === 'procuracao') return gerarProcuracao(c);
   if (c.m === 'aditamento' || c.m === 'rerratificacao') return gerarCorrecao(c);
+  if (BIB_TIPOS[c.m]) return gerarBiblioteca(c);
   const itens = { cv: itensCompraVenda, dacao: itensDacao, inventario: itensInventario, divorcio: itensDivorcio }[c.m](c);
 
   let titulo;
@@ -1320,10 +1386,11 @@ function mostrarAvisos(av) {
 
 function aoMudarModal() {
   const m = v('m_modal'), imovel = v('m_imovel');
-  document.querySelectorAll('#mForm fieldset[data-modal]').forEach(f => f.classList.toggle('hidden', !f.dataset.modal.split(' ').includes(m)));
+  document.querySelectorAll('#mForm fieldset[data-modal]').forEach(f => { const ms = f.dataset.modal.split(' '); f.classList.toggle('hidden', !(ms.includes(m) || (BIB_TIPOS[m] && ms.includes('bib')))); });
   document.querySelectorAll('#mForm fieldset[data-imovel]').forEach(f => f.classList.toggle('hidden', f.dataset.imovel !== imovel));
-  $('lblA').textContent = { cv: 'Vendedores', dacao: 'Devedores', inventario: 'Herdeiros e meeiro', divorcio: 'Divorciandos', procuracao: 'Mandantes (outorgantes)', aditamento: 'Partes do ato corrigido – outorgantes (vendedores)', rerratificacao: 'Partes do ato corrigido – outorgantes (vendedores)' }[m];
-  $('lblB').textContent = { cv: 'Compradores', dacao: 'Credores', procuracao: 'Procuradores (mandatários)', aditamento: 'Partes do ato corrigido – outorgados (compradores)', rerratificacao: 'Partes do ato corrigido – outorgados (compradores)' }[m] || '';
+  const bib = BIB_TIPOS[m];
+  $('lblA').textContent = bib ? bib.lA : { cv: 'Vendedores', dacao: 'Devedores', inventario: 'Herdeiros e meeiro', divorcio: 'Divorciandos', procuracao: 'Mandantes (outorgantes)', aditamento: 'Partes do ato corrigido – outorgantes (vendedores)', rerratificacao: 'Partes do ato corrigido – outorgantes (vendedores)' }[m];
+  $('lblB').textContent = bib ? bib.lB : { cv: 'Compradores', dacao: 'Credores', procuracao: 'Procuradores (mandatários)', aditamento: 'Partes do ato corrigido – outorgados (compradores)', rerratificacao: 'Partes do ato corrigido – outorgados (compradores)' }[m] || '';
   const tipoProc = v('m_procTipo');
   $('boxProcBem').classList.toggle('hidden', tipoProc !== 'imovel');
   $('lblProcPoderes').textContent = tipoProc === 'outra' ? 'Poderes conferidos' : 'Poderes adicionais (opcional)';
@@ -1334,7 +1401,7 @@ function aoMudarModal() {
   $('boxCessao').classList.toggle('hidden', !$('m_cessao').checked);
   $('boxAfor').classList.toggle('hidden', !$('m_afor').checked);
   if (aoMudarModal.ultimo !== m) {
-    $('m_imp').value = { cv: 'pendente', dacao: 'pendente', inventario: 'pago', divorcio: 'nao_incide', procuracao: 'nao_incide', aditamento: 'nao_incide', rerratificacao: 'nao_incide' }[m];
+    $('m_imp').value = { cv: 'pendente', dacao: 'pendente', inventario: 'pago', divorcio: 'nao_incide', procuracao: 'nao_incide', aditamento: 'nao_incide', rerratificacao: 'nao_incide' }[m] || 'nao_incide';
     aoMudarModal.ultimo = m;
   }
   gerarMinuta();
@@ -1345,9 +1412,11 @@ function nomeArquivoMinuta() {
   if (c.m === 'procuracao') return nomePasta(`${v('m_num') || 'NNN'} - PROCURACAO ${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])} - LIVRO ${v('m_livro') || 'xxx'} FOLHAS ${formatarFolhas(v('m_folhas')) || 'xxx'} (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`.replace(/\//g, '-'), 180);
   // Nome fixo da pasta 01 (regra do usuário, 27/10/2026): "NNN - ESCRITURA X PARA Y - MINUTA (TRADICIONAL|REVISADO)";
   // salvar de novo substitui o mesmo arquivo (nunca cópia).
-  const tipo = { cv: '', dacao: 'DACAO EM PAGAMENTO ', inventario: 'INVENTARIO ', divorcio: 'DIVORCIO ', aditamento: 'ADITAMENTO ', rerratificacao: 'RERRATIFICACAO ' }[c.m];
+  const tipo = BIB_TIPOS[c.m] ? BIB_TIPOS[c.m].arq.replace(/^ESCRITURA (DE )?/, '') + ' '
+    : { cv: '', dacao: 'DACAO EM PAGAMENTO ', inventario: 'INVENTARIO ', divorcio: 'DIVORCIO ', aditamento: 'ADITAMENTO ', rerratificacao: 'RERRATIFICACAO ' }[c.m];
   const partes = c.m === 'inventario' ? `DE ${semAcento(v('m_falNome').split(' ')[0] || 'xxx').toUpperCase()}`
-    : c.m === 'divorcio' ? `${prim(c.A.pessoas[0])} E ${prim(c.A.pessoas[1])}` : `${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])}`;
+    : c.m === 'divorcio' ? `${prim(c.A.pessoas[0])} E ${prim(c.A.pessoas[1])}`
+    : BIB_TIPOS[c.m] && !BIB_TIPOS[c.m].B ? prim(c.A.pessoas[0]) : `${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])}`;
   return nomePasta(`${v('m_num') || 'NNN'} - ESCRITURA ${tipo}${partes} - MINUTA (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`, 180);
 }
 
@@ -1545,7 +1614,18 @@ function blobMinutaWord() {
 }
 
 // Preenche a minuta a partir de uma escritura cadastrada.
-const NATUREZA_MODAL = n => /ADITAMENTO/i.test(n) ? 'aditamento' : /RERRATIFICA/i.test(n) ? 'rerratificacao' : /PROCURA/i.test(n) ? 'procuracao' : /INVENT/i.test(n) ? 'inventario' : /DIV[OÓ]RCIO/i.test(n) ? 'divorcio' : /DA[CÇ][AÃ]O/i.test(n) ? 'dacao' : 'cv';
+// Natureza da escritura → tipo da minuta (os "outros atos" usam os modelos aprovados da biblioteca).
+const NATUREZA_MODAL = n => {
+  const r = [[/ADITAMENTO/i, 'aditamento'], [/RERRATIFICA/i, 'rerratificacao'], [/SUBSTABELEC/i, 'bib-substabelecimento'],
+    [/REVOGA/i, 'bib-revogacao'], [/PROCURA/i, 'procuracao'], [/INVENT/i, 'inventario'], [/DIV[OÓ]RCIO/i, 'divorcio'],
+    [/DISSOLU/i, 'bib-uniao-dissolucao'], [/UNI[AÃ]O EST/i, 'bib-uniao'], [/PACTO/i, 'bib-pacto'], [/EMANCIPA/i, 'bib-emancipacao'],
+    [/DOA[CÇ][AÃ]O.*USUFRUTO/i, 'bib-doacao-usufruto'], [/DOA[CÇ][AÃ]O/i, 'bib-doacao'], [/PERMUTA/i, 'bib-permuta'],
+    [/HEREDIT/i, 'bib-cessao-heranca'], [/CESS[AÃ]O/i, 'bib-cessao-posse'], [/REN[UÚ]NCIA.*USUFRUTO/i, 'bib-usufruto-renuncia'],
+    [/USUFRUTO/i, 'bib-usufruto'], [/(CANCELAMENTO|QUITA[CÇ][AÃ]O).*[OÔ]NUS/i, 'bib-onus-cancelamento'], [/[OÔ]NUS/i, 'bib-onus'],
+    [/DIVIS[AÃ]O|CONDOM[IÍ]NIO/i, 'bib-divisao'], [/DA[CÇ][AÃ]O/i, 'dacao']];
+  const a = r.find(([re]) => re.test(n || ''));
+  return a ? a[1] : 'cv';
+};
 async function minutaDaEscritura(id) {
   const e = id && await Reg.get('escrituras', id);
   if (!e) return;

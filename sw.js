@@ -1,8 +1,8 @@
 ﻿// Guarda os arquivos do app e as bibliotecas para abrir mesmo sem internet.
 // Os dados (Drive) não passam por aqui.
-const VERSAO = 'notarius-0.5.10';
+const VERSAO = 'notarius-0.6.0';
 const ARQUIVOS = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icones/icone-192.png', 'icones/icone-512.png', 'marca/logo-selo.png',
-  'js/config.js', 'js/dados.js', 'js/base.js', 'js/nuvem.js', 'js/hd.js', 'js/registros.js', 'js/ferramentas.js',
+  'js/config.js', 'js/dados.js', 'js/base.js', 'js/nuvem.js', 'js/hd.js', 'js/registros.js', 'js/biblioteca.js', 'js/ferramentas.js',
   'js/escrituras.js', 'js/orcamentos.js', 'js/controle.js', 'js/comunicacoes.js', 'js/receitas.js', 'js/acervo.js', 'js/sinchd.js', 'js/app.js'];
 
 self.addEventListener('install', ev => { ev.waitUntil(caches.open(VERSAO).then(c => c.addAll(ARQUIVOS))); self.skipWaiting(); });

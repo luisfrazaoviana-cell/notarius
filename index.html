@@ -217,6 +217,24 @@
             <option value="procuracao">Procuração pública</option>
             <option value="aditamento">Aditamento (só o tabelião – art. 385)</option>
             <option value="rerratificacao">Rerratificação (com as partes – art. 386)</option>
+            <optgroup label="Outros atos (modelos aprovados da biblioteca)">
+              <option value="bib-doacao">Doação</option>
+              <option value="bib-doacao-usufruto">Doação com reserva de usufruto</option>
+              <option value="bib-permuta">Permuta</option>
+              <option value="bib-cessao-posse">Cessão de direitos possessórios</option>
+              <option value="bib-cessao-heranca">Cessão de direitos hereditários</option>
+              <option value="bib-uniao">União estável – declaratória</option>
+              <option value="bib-uniao-dissolucao">União estável – dissolução</option>
+              <option value="bib-pacto">Pacto antenupcial</option>
+              <option value="bib-emancipacao">Emancipação</option>
+              <option value="bib-divisao">Divisão amigável / extinção de condomínio</option>
+              <option value="bib-usufruto">Instituição de usufruto</option>
+              <option value="bib-usufruto-renuncia">Renúncia de usufruto</option>
+              <option value="bib-onus">Instituição de ônus</option>
+              <option value="bib-onus-cancelamento">Quitação e cancelamento de ônus</option>
+              <option value="bib-substabelecimento">Substabelecimento de procuração</option>
+              <option value="bib-revogacao">Revogação de procuração</option>
+            </optgroup>
           </select>
           <div class="linha2">
             <div><label class="f" for="m_imovel">Imóvel</label>
@@ -265,7 +283,7 @@
           </fieldset>
           <div class="hint">Empresa: nos nomes, "EMPRESA LTDA | P/P NOME DO SÓCIO | Vendedora" faz a assinatura em três linhas. Se a qualificação já tiver o "doravante denominada", ela fica como foi digitada.</div>
 
-          <fieldset data-modal="cv dacao procuracao aditamento rerratificacao">
+          <fieldset data-modal="cv dacao procuracao aditamento rerratificacao bib">
             <h3 id="lblB">Compradores</h3>
             <label class="f" for="m_bNomes">Nomes (um por linha; opcional "NOME | papel")</label>
             <textarea id="m_bNomes"></textarea>
@@ -275,6 +293,10 @@
             <textarea id="m_bQual" style="min-height:110px"></textarea>
           </fieldset>
 
+          <fieldset data-modal="bib">
+            <h3>Modelo da biblioteca</h3>
+            <div class="hint">O texto é o do modelo aprovado. O app preenche as partes (nomes e qualificação completa acima), a data e o selo; o que faltar sai em <b style="color:#d00000">vermelho</b> – complete em "Ajustar o texto de cada item" (abra o item e escreva o texto próprio).</div>
+          </fieldset>
           <fieldset data-modal="aditamento rerratificacao">
             <h3>Ato que será corrigido</h3>
             <div class="hint">Acima, as partes do ato corrigido, com a qualificação completa. No aditamento elas só constam do texto: quem assina é o tabelião (art. 385 do CNSNR). Na rerratificação comparecem e assinam (art. 386).</div>
@@ -792,6 +814,7 @@
 <script src="js/nuvem.js"></script>
 <script src="js/hd.js"></script>
 <script src="js/registros.js"></script>
+<script src="js/biblioteca.js"></script>
 <script src="js/ferramentas.js"></script>
 <script src="js/escrituras.js"></script>
 <script src="js/orcamentos.js"></script>

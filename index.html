@@ -215,6 +215,8 @@
             <option value="divorcio">Divórcio consensual com partilha</option>
             <option value="dacao">Dação em pagamento</option>
             <option value="procuracao">Procuração pública</option>
+            <option value="aditamento">Aditamento (só o tabelião – art. 385)</option>
+            <option value="rerratificacao">Rerratificação (com as partes – art. 386)</option>
           </select>
           <div class="linha2">
             <div><label class="f" for="m_imovel">Imóvel</label>
@@ -263,7 +265,7 @@
           </fieldset>
           <div class="hint">Empresa: nos nomes, "EMPRESA LTDA | P/P NOME DO SÓCIO | Vendedora" faz a assinatura em três linhas. Se a qualificação já tiver o "doravante denominada", ela fica como foi digitada.</div>
 
-          <fieldset data-modal="cv dacao procuracao">
+          <fieldset data-modal="cv dacao procuracao aditamento rerratificacao">
             <h3 id="lblB">Compradores</h3>
             <label class="f" for="m_bNomes">Nomes (um por linha; opcional "NOME | papel")</label>
             <textarea id="m_bNomes"></textarea>
@@ -271,6 +273,37 @@
             <select id="m_bGen"><option value="M">Masculino / misto</option><option value="F">Feminino</option></select>
             <label class="f" for="m_bQual">Qualificação completa</label>
             <textarea id="m_bQual" style="min-height:110px"></textarea>
+          </fieldset>
+
+          <fieldset data-modal="aditamento rerratificacao">
+            <h3>Ato que será corrigido</h3>
+            <div class="hint">Acima, as partes do ato corrigido, com a qualificação completa. No aditamento elas só constam do texto: quem assina é o tabelião (art. 385 do CNSNR). Na rerratificação comparecem e assinam (art. 386).</div>
+            <label class="f" for="m_adNat">Natureza do ato corrigido</label>
+            <input id="m_adNat" type="text" placeholder="Compra e Venda">
+            <div class="linha2">
+              <div><label class="f" for="m_adData">Lavrado em</label><input id="m_adData" type="text" placeholder="dd/mm/aaaa"></div>
+              <div><label class="f" for="m_adLivro">Livro</label><input id="m_adLivro" type="text" placeholder="024-E"></div>
+              <div><label class="f" for="m_adFolhas">Folhas</label><input id="m_adFolhas" type="text" placeholder="239/240"></div>
+            </div>
+            <fieldset data-modal="rerratificacao">
+              <label class="f" for="m_adNotas">Das notas (cartório que lavrou o ato)</label>
+              <input id="m_adNotas" type="text" placeholder="desta Serventia">
+            </fieldset>
+            <label class="f" for="m_adOque">O que será corrigido</label>
+            <input id="m_adOque" type="text" placeholder="os dados referentes à qualificação documental do VENDEDOR">
+            <fieldset data-modal="aditamento">
+              <label class="f" for="m_adItemTit">Item corrigido: número e título</label>
+              <input id="m_adItemTit" type="text" placeholder="I – OUTORGANTE / VENDEDOR">
+              <label class="f" for="m_adItem">Redação completa do item, já corrigida</label>
+              <textarea id="m_adItem" placeholder="**NOME**, de nacionalidade brasileira, ..., doravante denominado **VENDEDOR**."></textarea>
+            </fieldset>
+            <fieldset data-modal="rerratificacao">
+              <label class="f" for="m_adConsta">Onde consta (redação atual do trecho)</label>
+              <textarea id="m_adConsta" class="curto"></textarea>
+              <label class="f" for="m_adPassa">Passa a constar (nova redação)</label>
+              <textarea id="m_adPassa" class="curto"></textarea>
+              <div class="checks"><label><input type="checkbox" id="m_adRI" checked> Envolve imóvel (item de Registro de Imóveis)</label></div>
+            </fieldset>
           </fieldset>
 
           <fieldset data-modal="cv">

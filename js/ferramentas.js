@@ -496,7 +496,8 @@ function generoPessoa(nomeP, qual, gGrupo) {
   if (!n || !qual) return gGrupo;
   const i = qual.toUpperCase().indexOf(n.toUpperCase());
   if (i < 0) return gGrupo;
-  const depois = qual.slice(i + n.length, i + n.length + 90).toLowerCase();
+  // "de nacionalidade brasileira" vale para homens e mulheres (redação da casa): não indica o gênero.
+  const depois = qual.slice(i + n.length, i + n.length + 120).toLowerCase().replace(/nacionalidade\s+(brasileira|estrangeira)/g, 'nacionalidade');
   const fem = depois.match(/\b(brasileira|estrangeira|portadora|inscrita|solteira|casada|viúva|divorciada|separada|aposentada|nascida|residente e domiciliada)\b/);
   const mas = depois.match(/\b(brasileiro|estrangeiro|portador|inscrito|solteiro|casado|viúvo|divorciado|separado|aposentado|nascido|residente e domiciliado)\b/);
   if (fem && (!mas || fem.index < mas.index)) return 'F';
@@ -555,6 +556,12 @@ function contexto() {
   }
   if (m === 'divorcio') { c.A = grupo('m_aNomes', 'M', true); c.rA = 'DIVORCIANDO'; }
   if (m === 'procuracao') { c.A = grupo('m_aNomes', v('m_aGen')); c.rA = 'MANDANTE'; c.B = grupo('m_bNomes', v('m_bGen')); c.rB = 'MANDATÁRIO'; }
+  if (m === 'aditamento' || m === 'rerratificacao') {
+    // Partes do ato corrigido, com os papéis que nele ocupam (pela natureza digitada).
+    const nat = v('m_adNat'), [rA, rB] = /da[cç][aã]o/i.test(nat) ? ['DEVEDOR', 'CREDOR'] : /doa[cç][aã]o/i.test(nat) ? ['DOADOR', 'DONATÁRIO']
+      : /compra|venda/i.test(nat) || !nat ? ['VENDEDOR', 'COMPRADOR'] : ['OUTORGANTE', 'OUTORGADO'];
+    c.A = grupo('m_aNomes', v('m_aGen')); c.rA = rA; c.B = grupo('m_bNomes', v('m_bGen')); c.rB = rB;
+  }
   c.prop = m === 'inventario' ? [c.Fal, c.rFal] : [c.A, c.rA];
   c.adq = m === 'cv' || m === 'dacao' ? [c.B, c.rB] : [c.A, c.rA];
   // Matrículas: uma por linha, "número | descrição". Mais de uma = texto no plural ("os imóveis").
@@ -1025,6 +1032,96 @@ function gerarProcuracao(c) {
   mostrarAvisos([]);
 }
 
+/* Aditamento (art. 385 do CNSNR: só o tabelião subscreve, erro evidente, sem mudar a vontade das partes) e
+   rerratificação (art. 386: comparecem os mesmos comparecentes do ato corrigido). Textos aprovados pelo usuário em
+   27/10/2026 (modelos em 00 - MODELOS; fonte: propostas/modelos/textos-aditamento.js). */
+function gerarCorrecao(c) {
+  const ct = C(), ad = c.m === 'aditamento', trad = c.trad;
+  const lav = ct.lavrador || '[[nome de quem lavra xxx]]', cargo = ct.cargo || '[[cargo xxx]]';
+  const lavCargo = `**${lav} – ${cargo}**`, selo = F('m_selo', 'número do selo');
+  const data = dataExtenso(v('m_data')) || '[[data da lavratura por extenso xxx]]';
+  const natT = v('m_adNat'), NAT = natT ? natT.toUpperCase() : '[[NATUREZA DO ATO CORRIGIDO xxx]]';
+  const natFrase = natT ? natT.split(/\s+/).map(p => /^(e|de|da|do|das|dos|com|em)$/i.test(p) ? p.toLowerCase() : cap(p.toLowerCase())).join(' ') : '[[natureza do ato corrigido xxx]]';
+  const orig = `Escritura Pública de ${natFrase}, lavrada em ${F('m_adData', 'data do ato corrigido')}, às fls. ${F('m_adFolhas', 'folhas')}, do Livro ${F('m_adLivro', 'livro')}`;
+  const notas = v('m_adNotas') || 'desta Serventia', oque = F('m_adOque', 'o que será corrigido');
+  const rA = nome(c.rA, c.A), rB = nome(c.rB, c.B);
+  // Qualificação de cada grupo sem a frase dos documentos (o texto aprovado a põe no fim do item).
+  const q = (G, base, lado) => itQualificacao({ ...c, trad: false }, G, base, lado);
+  const qA = q(c.A, c.rA, 'A'), qB = q(c.B, c.rB, 'B'), semPonto = s => s.replace(/\.$/, '');
+  const CNSNR = 'Código de Normas dos Serviços Notariais e de Registro do Estado do Pará – CNSNR (Provimento Conjunto nº 002/2019 – CJRMB/CJCI)';
+  const CENSEC = '**CENTRAL NOTARIAL DE SERVIÇOS ELETRÔNICOS COMPARTILHADOS – CENSEC:** As informações constantes do presente instrumento serão devidamente informadas à Central Notarial de Serviços Eletrônicos Compartilhados – CENSEC, dentro do prazo legal, nos termos dos arts. 264 e seguintes do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023)';
+  const CNN = 'Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial';
+  const itens = [];
+  let titulo, abertura, fecho;
+  if (ad) {
+    titulo = `**ESCRITURA PÚBLICA DE ADITAMENTO** À ESCRITURA PÚBLICA DE ${NAT} QUE TEM COMO ${rA} ${nomesTitulo(c.A)} E COMO ${rB} ${nomesTitulo(c.B)}, NA FORMA ABAIXO:`;
+    const tit = v('m_adItemTit'), red = v('m_adItem') ? v('m_adItem').replace(/\s*\n\s*/g, ' ') : '';
+    const item = tit || red ? `${tit ? tit + ': ' : '[[número e título do item corrigido xxx]]: '}${red || '[[redação completa e já corrigida do item xxx]]'}` : '[[número e título do item corrigido, com a redação completa e já corrigida xxx]]';
+    if (trad) {
+      abertura = `Saibam quantos este público instrumento virem que, ${data}, ${ct.localTrad || '[[local da lavratura xxx]]'}, em Cartório, eu, ${lavCargo}, a requerimento verbal da parte interessada, lavro o presente aditamento:`;
+      itens.push({ tt: 'DISPOSITIVO LEGAL', x: `Faz-se o presente **ADITAMENTO**, subscrito apenas pelo Tabelionato, para suprir omissões e corrigir erros evidentes do ato originário, sem alteração da vontade das partes nem da substância do ato, nos termos do art. 385 do ${CNSNR}.` });
+      itens.push({ tt: 'PARTES DO ATO ADITADO', x: `**A) ${qA.tt}:** ${semPonto(qA.x)}; **B) ${qB.tt}:** ${semPonto(qB.x)}. As partes não comparecem a este ato, que é subscrito apenas pelo Tabelionato, na forma do item I.` });
+      itens.push({ tt: 'OBJETO', x: `Trata-se de Aditamento à ${orig}, das notas desta Serventia, para aditar ${oque}.` });
+      itens.push({ tt: 'ADITAMENTO', x: `Fica **ADITADA** a Escritura Pública objeto do presente instrumento, para que passe a constar a seguinte redação: “{…} ${item} {…}”.` });
+      itens.push({ tt: 'EFICÁCIA', x: '**A)** Os demais dados constantes da Escritura Pública, aditada neste ato, mantêm-se inalterados em todos os seus termos; **B)** A presente Escritura de Aditamento deve ser apresentada em conjunto com a Escritura Pública originária, para os devidos fins de publicidade.' });
+      itens.push({ tt: 'COMUNICAÇÕES', x: `**A)** ${CENSEC}; **B) ANOTAÇÃO:** A circunstância deste aditamento será anotada à margem da Escritura Pública originária, nos termos do art. 385 e do art. 247, inc. X, do CNSNR.` });
+      fecho = `**NADA MAIS**, do que **DOU FÉ**. Eu, ${lavCargo}, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assina somente o **${(ct.cargoCurto || cargo).toUpperCase()}**.`;
+    } else {
+      abertura = `Saibam todos quantos virem este público instrumento que, ${data}, ${ct.localRev || ct.localTrad || '[[local da lavratura xxx]]'}, em Cartório, eu, ${ct.cargoCurto || cargo}, a requerimento verbal da parte interessada, lavro o presente aditamento.`;
+      itens.push({ tr: 'DO FUNDAMENTO', x: 'Este aditamento, subscrito apenas por mim, supre omissão e corrige erro evidente do ato originário, sem alterar a vontade das partes nem a substância do ato, na forma do art. 385 do Código de Normas dos Serviços Notariais e de Registro do Estado do Pará – CNSNR.' });
+      itens.push({ tr: 'DAS PARTES DO ATO ADITADO', x: `São partes do ato aditado: **a)** ${semPonto(qA.x)}; e **b)** ${semPonto(qB.x)}. As partes não comparecem a este aditamento, que subscrevo sozinho, na forma do item I.` });
+      itens.push({ tr: 'DO ATO ADITADO', x: `O ato aditado é a ${orig}, das notas desta Serventia. O aditamento refere-se a ${oque}.` });
+      itens.push({ tr: 'DO ADITAMENTO', x: `O item ${tit || '[[número e título do item corrigido xxx]]'} da escritura aditada passa a ter a seguinte redação: “${red || '[[redação completa e já corrigida do item xxx]]'}”.` });
+      itens.push({ tr: 'DA EFICÁCIA', x: 'Permanecem inalterados todos os demais termos da escritura aditada. Este aditamento deve ser apresentado em conjunto com a escritura originária.' });
+      itens.push({ tr: 'DAS ANOTAÇÕES E COMUNICAÇÕES', x: `Anotarei este aditamento à margem da escritura originária, conforme os arts. 247, X, e 385 do CNSNR, e comunicarei este ato à Central Notarial de Serviços Eletrônicos Compartilhados – CENSEC no prazo legal, conforme os arts. 264 e seguintes do ${CNN}.` });
+      itens.push({ tr: 'DO ENCERRAMENTO', x: `Eu, **${lav}**, ${cargo}, o lavrei, conferi, li e subscrevo e encerro o ato. Dou fé. Selo: ${selo}.` });
+    }
+  } else {
+    const todos = { pessoas: [...c.A.pessoas, ...c.B.pessoas], pl: true, g: 'M' };
+    titulo = `**ESCRITURA PÚBLICA DE RERRATIFICAÇÃO** DA ESCRITURA PÚBLICA DE ${NAT}, QUE FAZEM ${nomesTitulo(todos)}, NA FORMA ABAIXO:`;
+    const consta = F('m_adConsta', 'redação atual do trecho'), passa = F('m_adPassa', 'nova redação do trecho');
+    const ri = $('m_adRI') ? $('m_adRI').checked : true;
+    if (trad) {
+      abertura = `Saibam quantos este público instrumento virem que, ${data}, ${ct.localTrad || '[[local da lavratura xxx]]'}, em Cartório, perante mim, ${lavCargo}, compareceram:`;
+      itens.push({ tt: 'PARTES', x: `**A)** ${semPonto(qA.x)}; **B)** ${semPonto(qB.x)}. Documentos arquivados em classificador próprio desta Serventia.` });
+      itens.push(itIdentidade(c));
+      itens.push({ tt: 'VONTADE', x: `Então, pelas **PARTES**, que são os mesmos comparecentes da escritura pública objeto de correção, me foi dito que é de sua vontade a lavratura da presente Escritura Pública de Rerratificação, para corrigir ${oque}, nos termos do art. 386 do ${CNSNR}.` });
+      itens.push({ tt: 'OBJETO', x: `Trata-se de Rerratificação da ${orig}, das notas ${notas}.` });
+      itens.push({ tt: 'RERRATIFICAÇÃO', x: `Fica **RERRATIFICADA** a Escritura Pública objeto desta, para que, onde consta: “${consta}”, passe a constar: “${passa}”, ficando **RATIFICADOS** todos os seus demais termos, cláusulas e condições.` });
+      itens.push({ tt: 'EFICÁCIA', x: '**A)** Os demais dados constantes da Escritura Pública, rerratificada neste ato, mantêm-se inalterados em todos os seus termos; **B)** A presente Escritura de Rerratificação deve ser apresentada em conjunto com a Escritura Pública originária, para os devidos fins de publicidade.' });
+      itens.push(itLGPD(c));
+      itens.push({ tt: 'DECLARAÇÕES', x: '**A)** As **PARTES** declaram que não são pessoas expostas politicamente, atualmente ou nos últimos 05 (cinco) anos, não são familiares de pessoas expostas politicamente, bem como não são colaboradoras estreitas de pessoas expostas politicamente, declarando, ainda, para todos os fins de direito que, os dados constantes desta escritura são **VERDADEIROS**, ciente que quaisquer inconsistências podem trazer as sanções expostas na lei, nos termos do art. 145, §6º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023); **B)** As **PARTES** afirmam sob responsabilidade civil e criminal que os fatos e declarações prestadas são a exata expressão da verdade e que aceitam esta escritura em todos os seus termos, por se acharem de inteiro e pleno acordo com o ajustado e contratado entre si, ressalvando eventuais erros, omissões ou direito de terceiros e, por conseguinte, eximindo esta serventia de quaisquer responsabilidades oriundas em razão dessas declarações.' });
+      itens.push({ tt: 'COMUNICAÇÕES', x: `**A)** ${CENSEC}; **B) ANOTAÇÃO:** A presente **RERRATIFICAÇÃO** será anotada à margem da Escritura Pública originária ou, se esta tiver sido lavrada em outra Serventia, comunicada ao notário que a lavrou, para as anotações remissivas, nos termos do art. 386 e do art. 247, inc. X, do CNSNR e do art. 272, § 4º, do ${CNN}.` });
+      if (ri) itens.push({ tt: 'REGISTRO DE IMÓVEIS', x: 'As **PARTES** autorizam o Ofício de Registro de Imóveis competente a proceder a todos os atos de registro e averbação decorrentes da presente rerratificação, e foram devidamente orientadas a protocolá-la juntamente com a Escritura Pública originária.' });
+      fecho = `**ASSIM** o disseram, do que **DOU FÉ**, me pediram este público instrumento, que lhes lavrei nas minhas notas. **NADA MAIS ME FOI DITO**, lido e achado conforme, aceitam, concordam e outorgam, dispensada a presença das testemunhas instrumentárias, do que **DOU FÉ**. Eu, ${lavCargo}, que o digitei, conferi e li, subscrevo em público e raso, encerrando o presente ato, do que **DOU FÉ**. Selo: ${selo}. Assinam as **PARTES** qualificadas no item I e o **${(ct.cargoCurto || cargo).toUpperCase()}**.`;
+    } else {
+      abertura = `Saibam todos quantos virem este público instrumento que, ${data}, ${ct.localRev || ct.localTrad || '[[local da lavratura xxx]]'}, em Cartório, perante mim, ${ct.cargoCurto || cargo}, compareceram as partes a seguir qualificadas.`;
+      itens.push({ tr: 'DAS PARTES', x: `**a)** ${semPonto(qA.x)}; e **b)** ${semPonto(qB.x)}.` });
+      itens.push(itIdentidade(c));
+      itens.push({ tr: 'DO FUNDAMENTO', x: 'As partes são os mesmos comparecentes da escritura objeto de correção e comparecem para corrigir incorreção ou omissão que não constitui mero erro evidente, na forma do art. 386 do Código de Normas dos Serviços Notariais e de Registro do Estado do Pará – CNSNR.' });
+      itens.push({ tr: 'DO ATO RERRATIFICADO', x: `O ato rerratificado é a ${orig}, das notas ${notas}. A correção refere-se a ${oque}.` });
+      itens.push({ tr: 'DA RERRATIFICAÇÃO', x: `As partes retificam a escritura para que, onde consta “${consta}”, passe a constar “${passa}”, e ratificam todos os seus demais termos, cláusulas e condições.` });
+      itens.push({ tr: 'DA EFICÁCIA', x: 'Permanecem inalterados todos os demais termos da escritura rerratificada. Esta rerratificação deve ser apresentada em conjunto com a escritura originária.' });
+      itens.push({ tr: 'DAS DECLARAÇÕES', x: 'Sob as penas da lei: **a)** as partes declaram que não são, nem foram nos últimos cinco anos, pessoas expostas politicamente, e que não são familiares nem estreitos colaboradores de pessoas nessa condição, nos termos do art. 145, § 6º, do Código Nacional de Normas da Corregedoria Nacional de Justiça – Foro Extrajudicial (Provimento CNJ nº 149/2023); **b)** as partes declaram que as informações prestadas neste ato são verdadeiras, assumem por elas a responsabilidade civil e criminal e isentam esta Serventia de responsabilidade por erros, omissões ou direitos de terceiros não declarados.' });
+      itens.push(itLGPD(c));
+      itens.push({ tr: 'DAS ANOTAÇÕES E COMUNICAÇÕES', x: `Anotarei esta rerratificação à margem da escritura originária ou, se esta tiver sido lavrada em outra serventia, comunicarei este ato ao notário que a lavrou, para as anotações remissivas, conforme o art. 386 do CNSNR e o art. 272, § 4º, do ${CNN}. Comunicarei também este ato à Central Notarial de Serviços Eletrônicos Compartilhados – CENSEC no prazo legal, conforme os arts. 264 e seguintes do mesmo Código.` });
+      if (ri) itens.push({ tr: 'DO REGISTRO IMOBILIÁRIO', x: 'As partes autorizam o Ofício de Registro de Imóveis competente a praticar os atos de registro e averbação decorrentes desta rerratificação e foram orientadas a protocolá-la juntamente com a escritura originária.' });
+      itens.push({ tr: 'DO ENCERRAMENTO', x: `Assim o disseram e me pediram que lavrasse este instrumento, o qual, lido em voz alta e achado conforme, aceitam, outorgam e assinam, dispensada a presença de testemunhas instrumentárias. Eu, **${lav}**, ${cargo}, o lavrei, conferi, li e subscrevo e encerro o ato. Dou fé. Selo: ${selo}.` });
+    }
+  }
+  const aj = aplicarAjustes(c, itens, { ementa: titulo, fecho: trad ? fecho : undefined });
+  let corpo = abertura + ' ' + aj.itens.map((it, i) => `__${romano(i + 1)} – ${trad ? (it.tt || it.tr) : (it.tr || it.tt)}:__ ${it.x}`).join(' ');
+  if (trad) corpo += ' ' + aj.fecho;
+  // Aditamento: só o tabelião assina. Rerratificação: as partes do ato corrigido e o tabelião.
+  const ass = [];
+  if (!ad) [[c.A, c.rA, 'm_aQual'], [c.B, c.rB, 'm_bQual']].forEach(([G, base, qual]) => G.pessoas.forEach(p =>
+    ass.push([p.nome.toUpperCase(), p.papel || cap(nome(base, { pl: false, g: generoPessoa(p.nome, v(qual), G.g) }).toLowerCase())])));
+  ass.push([ct.lavrador || 'NOME DE QUEM LAVRA', cargo]);
+  const p = (cls, s) => `<p class="${cls}">${marcacao(s)}</p>`;
+  $('mDoc').innerHTML = timbreHTML('tela') + atoHTML() + p('ementa', aj.ementa) + fimMinuta(corpo, ct, ass);
+  mostrarAvisos(ad ? ['Aditamento: só para erro evidente, sem mudar a vontade das partes (art. 385 do CNSNR). Se o erro foi do cartório, o ato é gratuito e usa o selo Gratuito (art. 386, § 1º).'] : []);
+}
+
 // Corpo + local/data + assinaturas. Regras do usuário: assinaturas nunca sozinhas numa página (o fim do texto,
 // a data e as assinaturas ficam presos uns aos outros) e nunca duas linhas em branco seguidas (segurança).
 function fimMinuta(corpo, ct, ass) {
@@ -1141,6 +1238,7 @@ const TITULOS = {
 function gerarMinuta() {
   const c = contexto();
   if (c.m === 'procuracao') return gerarProcuracao(c);
+  if (c.m === 'aditamento' || c.m === 'rerratificacao') return gerarCorrecao(c);
   const itens = { cv: itensCompraVenda, dacao: itensDacao, inventario: itensInventario, divorcio: itensDivorcio }[c.m](c);
 
   let titulo;
@@ -1224,8 +1322,8 @@ function aoMudarModal() {
   const m = v('m_modal'), imovel = v('m_imovel');
   document.querySelectorAll('#mForm fieldset[data-modal]').forEach(f => f.classList.toggle('hidden', !f.dataset.modal.split(' ').includes(m)));
   document.querySelectorAll('#mForm fieldset[data-imovel]').forEach(f => f.classList.toggle('hidden', f.dataset.imovel !== imovel));
-  $('lblA').textContent = { cv: 'Vendedores', dacao: 'Devedores', inventario: 'Herdeiros e meeiro', divorcio: 'Divorciandos', procuracao: 'Mandantes (outorgantes)' }[m];
-  $('lblB').textContent = { cv: 'Compradores', dacao: 'Credores', procuracao: 'Procuradores (mandatários)' }[m] || '';
+  $('lblA').textContent = { cv: 'Vendedores', dacao: 'Devedores', inventario: 'Herdeiros e meeiro', divorcio: 'Divorciandos', procuracao: 'Mandantes (outorgantes)', aditamento: 'Partes do ato corrigido – outorgantes (vendedores)', rerratificacao: 'Partes do ato corrigido – outorgantes (vendedores)' }[m];
+  $('lblB').textContent = { cv: 'Compradores', dacao: 'Credores', procuracao: 'Procuradores (mandatários)', aditamento: 'Partes do ato corrigido – outorgados (compradores)', rerratificacao: 'Partes do ato corrigido – outorgados (compradores)' }[m] || '';
   const tipoProc = v('m_procTipo');
   $('boxProcBem').classList.toggle('hidden', tipoProc !== 'imovel');
   $('lblProcPoderes').textContent = tipoProc === 'outra' ? 'Poderes conferidos' : 'Poderes adicionais (opcional)';
@@ -1236,7 +1334,7 @@ function aoMudarModal() {
   $('boxCessao').classList.toggle('hidden', !$('m_cessao').checked);
   $('boxAfor').classList.toggle('hidden', !$('m_afor').checked);
   if (aoMudarModal.ultimo !== m) {
-    $('m_imp').value = { cv: 'pendente', dacao: 'pendente', inventario: 'pago', divorcio: 'nao_incide', procuracao: 'nao_incide' }[m];
+    $('m_imp').value = { cv: 'pendente', dacao: 'pendente', inventario: 'pago', divorcio: 'nao_incide', procuracao: 'nao_incide', aditamento: 'nao_incide', rerratificacao: 'nao_incide' }[m];
     aoMudarModal.ultimo = m;
   }
   gerarMinuta();
@@ -1247,7 +1345,7 @@ function nomeArquivoMinuta() {
   if (c.m === 'procuracao') return nomePasta(`${v('m_num') || 'NNN'} - PROCURACAO ${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])} - LIVRO ${v('m_livro') || 'xxx'} FOLHAS ${formatarFolhas(v('m_folhas')) || 'xxx'} (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`.replace(/\//g, '-'), 180);
   // Nome fixo da pasta 01 (regra do usuário, 27/10/2026): "NNN - ESCRITURA X PARA Y - MINUTA (TRADICIONAL|REVISADO)";
   // salvar de novo substitui o mesmo arquivo (nunca cópia).
-  const tipo = { cv: '', dacao: 'DACAO EM PAGAMENTO ', inventario: 'INVENTARIO ', divorcio: 'DIVORCIO ' }[c.m];
+  const tipo = { cv: '', dacao: 'DACAO EM PAGAMENTO ', inventario: 'INVENTARIO ', divorcio: 'DIVORCIO ', aditamento: 'ADITAMENTO ', rerratificacao: 'RERRATIFICACAO ' }[c.m];
   const partes = c.m === 'inventario' ? `DE ${semAcento(v('m_falNome').split(' ')[0] || 'xxx').toUpperCase()}`
     : c.m === 'divorcio' ? `${prim(c.A.pessoas[0])} E ${prim(c.A.pessoas[1])}` : `${prim(c.A.pessoas[0])} PARA ${prim(c.B.pessoas[0])}`;
   return nomePasta(`${v('m_num') || 'NNN'} - ESCRITURA ${tipo}${partes} - MINUTA (${c.trad ? 'TRADICIONAL' : 'REVISADO'})`, 180);
@@ -1433,7 +1531,7 @@ function blobMinutaWord() {
 }
 
 // Preenche a minuta a partir de uma escritura cadastrada.
-const NATUREZA_MODAL = n => /PROCURA/i.test(n) ? 'procuracao' : /INVENT/i.test(n) ? 'inventario' : /DIV[OÓ]RCIO/i.test(n) ? 'divorcio' : /DA[CÇ][AÃ]O/i.test(n) ? 'dacao' : 'cv';
+const NATUREZA_MODAL = n => /ADITAMENTO/i.test(n) ? 'aditamento' : /RERRATIFICA/i.test(n) ? 'rerratificacao' : /PROCURA/i.test(n) ? 'procuracao' : /INVENT/i.test(n) ? 'inventario' : /DIV[OÓ]RCIO/i.test(n) ? 'divorcio' : /DA[CÇ][AÃ]O/i.test(n) ? 'dacao' : 'cv';
 async function minutaDaEscritura(id) {
   const e = id && await Reg.get('escrituras', id);
   if (!e) return;

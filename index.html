@@ -578,13 +578,14 @@
         <input id="orcImovel" type="text">
         <div class="linha2">
           <div><label class="f" for="orcPreco">Preço declarado (R$)</label><input id="orcPreco" type="text" inputmode="decimal"></div>
-          <div><label class="f" for="orcVenal">Valor venal (R$)</label><input id="orcVenal" type="text" inputmode="decimal"></div>
+          <div><label class="f" for="orcVenal" id="orcVenalRot">Valor venal (R$)</label><input id="orcVenal" type="text" inputmode="decimal"></div>
         </div>
-        <div class="hint">A faixa é achada pelo maior valor entre preço e venal.</div>
+        <div class="checks"><label><input type="checkbox" id="orcEhRural"> Imóvel rural (usa o VTN do ITR no lugar do valor venal)</label></div>
+        <div class="hint" id="orcBaseHint">A faixa é achada pelo maior valor entre preço e venal.</div>
         <div class="linha2">
           <div><label class="f" for="orcOnus">Ônus / cláusulas (30% cada)</label>
             <select id="orcOnus"><option value="0">Nenhum</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
-          <div class="checks" style="align-self:end"><label><input type="checkbox" id="orcRural"> Imóvel rural (30%)</label></div>
+          <div class="checks" style="align-self:end"><label><input type="checkbox" id="orcRural"> Acréscimo de imóvel rural (30%)</label></div>
         </div>
         <div class="linha2">
           <div class="checks" style="align-self:end"><label><input type="checkbox" id="orcCert" checked> Certidão da matrícula</label></div>
@@ -597,7 +598,7 @@
       </div>
       <div class="card">
         <h2>Composição</h2>
-        <div id="orcComp"><div class="vazio">Informe preço ou valor venal.</div></div>
+        <div id="orcComp"><div class="vazio">Informe preço ou valor de referência.</div></div>
         <div class="acoes">
           <button class="prim" id="orcSalvar">Gerar PDF e salvar</button>
           <button id="orcBaixar">Só baixar o PDF</button>

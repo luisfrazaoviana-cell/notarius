@@ -4,10 +4,22 @@
 const Orc = {
   calc: null,
 
+  // Imóvel rural não tem IPTU: o VTN do ITR substitui o valor venal (decisão do usuário, 31/10/2026).
+  origemBase(rural, preco, ref) {
+    return ref >= preco ? (rural ? 'VTN (Valor da Terra Nua)' : 'Valor Venal') : 'Preço Declarado';
+  },
+
+  ajustarRotulos() {
+    const rural = $('orcEhRural').checked;
+    $('orcVenalRot').textContent = rural ? 'VTN – Valor da Terra Nua (R$)' : 'Valor venal (R$)';
+    $('orcBaseHint').textContent = rural ? 'A faixa é achada pelo maior valor entre preço e VTN.' : 'A faixa é achada pelo maior valor entre preço e venal.';
+  },
+
   compor() {
+    this.ajustarRotulos();
     const preco = lerValor($('orcPreco').value) || 0, venal = lerValor($('orcVenal').value) || 0;
     const base = Math.max(preco, venal);
-    if (!base) { this.calc = null; $('orcComp').innerHTML = '<div class="vazio">Informe preço ou valor venal.</div>'; return; }
+    if (!base) { this.calc = null; $('orcComp').innerHTML = '<div class="vazio">Informe preço ou valor de referência.</div>'; return; }
     const perc = 30 * (+$('orcOnus').value + ($('orcRural').checked ? 1 : 0));
     const ato = calcularAto(TAB()?.escComValor, base, perc);
     if (!ato) { this.calc = null; $('orcComp').innerHTML = '<div class="aviso">A tabela deste cartório não tem faixa de escritura com valor declarado para esse valor (Ajustes → Cartório).</div>'; return; }
@@ -19,7 +31,7 @@ const Orc = {
     const outros = lerValor($('orcOutros').value) || 0;
     if (outros) itens.push(['Outros valores', outros]);
     const total = itens.reduce((s, i) => s + i[1], 0);
-    this.calc = { base, origem: venal >= preco ? 'Valor Venal' : 'Preço Declarado', ato, itens, total, perc };
+    this.calc = { base, origem: this.origemBase($('orcEhRural').checked, preco, venal), ato, itens, total, perc };
     $('orcComp').innerHTML = `<div class="codigo"><div><div class="hint">Código do ato</div><b>${ato.linha.cod}</b></div><small>Base: R$ ${brl(base)} – ${this.calc.origem}<br>Faixa ${ato.linha.desc}</small></div>
       <table class="res">${itens.map(([n, v]) => `<tr><td>${esc(n)}</td><td>R$ ${brl(v)}</td></tr>`).join('')}
       <tr class="total"><td>Total da guia</td><td>R$ ${brl(total)}</td></tr></table>`;
@@ -28,7 +40,7 @@ const Orc = {
   async novo(pre = {}) {
     App.ir('orcamentos');
     ['orcNome', 'orcCpf', 'orcImovel', 'orcPreco', 'orcVenal', 'orcOutros'].forEach(i => $(i).value = '');
-    $('orcOnus').value = pre.onus || 0; $('orcRural').checked = !!pre.rural;
+    $('orcOnus').value = pre.onus || 0; $('orcRural').checked = !!pre.rural; $('orcEhRural').checked = !!pre.rural;
     $('orcCert').checked = true; $('orcDil').value = 1;
     $('orcDesc').value = C().descricaoGuia || ''; $('orcData').value = hojeISO();
     await this.preencherEscrituras();
@@ -45,11 +57,13 @@ const Orc = {
     if (!$('orcNome').value) $('orcNome').value = comprador;
     if (!$('orcImovel').value) $('orcImovel').value = e.imovel || '';
     // Preço e valor venal guardados separados (desde a 0.4.9); escrituras antigas só têm a base.
+    // Em imóvel rural o campo guarda o VTN; o valor venal da prefeitura não entra na base.
+    const ehRural = !!(e.imovelRural || e.rural), ref = ehRural ? e.vtn : e.venal;
     if (!$('orcVenal').value && !$('orcPreco').value) {
-      if (e.preco || e.venal) { if (e.preco) $('orcPreco').value = brl(e.preco); if (e.venal) $('orcVenal').value = brl(e.venal); }
+      if (e.preco || ref) { if (e.preco) $('orcPreco').value = brl(e.preco); if (ref) $('orcVenal').value = brl(ref); }
       else if (e.base) $('orcPreco').value = brl(e.base);
     }
-    $('orcRural').checked = !!e.rural;
+    $('orcRural').checked = !!e.rural; $('orcEhRural').checked = ehRural;
   },
 
   async preencherEscrituras() {
@@ -154,8 +168,9 @@ const Orc = {
       await Reg.salvar('orcamentos', rec);
       if (escId) {
         const e = await Reg.get('escrituras', escId);
-        Object.assign(e, { base: rec.base, preco: lerValor($('orcPreco').value) || 0, venal: lerValor($('orcVenal').value) || 0,
-          codigo: rec.codigo, emolumentos: rec.totalAto, orcTotal: rec.total, rural: $('orcRural').checked });
+        const ehRural = $('orcEhRural').checked, ref = lerValor($('orcVenal').value) || 0;
+        Object.assign(e, { base: rec.base, preco: lerValor($('orcPreco').value) || 0, ...(ehRural ? { vtn: ref } : { venal: ref }),
+          codigo: rec.codigo, emolumentos: rec.totalAto, orcTotal: rec.total, rural: $('orcRural').checked, imovelRural: ehRural });
         await Reg.salvar('escrituras', e);
       }
       baixarBlob(blob, nomeArq);
@@ -174,7 +189,9 @@ const Orc = {
 
   iniciar() {
     ['orcPreco', 'orcVenal', 'orcOutros'].forEach(i => formatarAoSair($(i)));
-    ['orcPreco', 'orcVenal', 'orcOutros', 'orcDil', 'orcOnus', 'orcRural', 'orcCert'].forEach(i => $(i).addEventListener('input', () => this.compor()));
+    // Trocar entre urbano e rural limpa o campo: venal e VTN não se misturam.
+    $('orcEhRural').addEventListener('input', () => { $('orcVenal').value = ''; });
+    ['orcPreco', 'orcVenal', 'orcOutros', 'orcDil', 'orcOnus', 'orcRural', 'orcEhRural', 'orcCert'].forEach(i => $(i).addEventListener('input', () => this.compor()));
     $('orcEsc').addEventListener('change', async () => { await this.daEscritura($('orcEsc').value); this.compor(); });
     $('orcSalvar').onclick = () => this.salvar(false);
     $('orcBaixar').onclick = () => this.salvar(true);

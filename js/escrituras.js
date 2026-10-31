@@ -174,11 +174,11 @@ const Esc = {
 
   itemHTML(r) {
     const recebido = r.situacao === 'LAVRADA' && r.emolumentos ? (r.recebido ? '<span class="selo pago">RECEBIDO</span>' : '<span class="selo pendente">A RECEBER</span>') : '';
-    const paga = r.situacao === 'MINUTA' && r.recebido ? '<span title="Minuta paga" aria-label="Minuta paga">✅</span> ' : '';
+    const paga = r.situacao === 'MINUTA' && r.recebido ? ' <span title="Minuta paga" aria-label="Minuta paga">✅</span>' : '';
     return `<div class="item" data-esc="${esc(r.id)}">
-      <div><div class="t">${paga}${esc(r.nome)}</div>
+      <div><div class="t">${esc(r.nome)}</div>
         <div class="s"><span class="selo ${r.situacao === 'LAVRADA' ? 'lavrada' : 'minuta'}">${r.situacao || '—'}</span> ${esc(r.parceiro)}${r.dataLavratura ? ' · ' + dataBR(r.dataLavratura) : ''}${r.selo ? ' · selo ' + esc(r.selo) : ''}${r.semPasta ? ' · <b style="color:var(--red)">pasta não encontrada</b>' : ''} ${Pronta.selo(r)}</div></div>
-      <div class="v">${r.emolumentos ? 'R$ ' + brl(r.emolumentos) : ''}<div>${recebido}</div></div></div>`;
+      <div class="v">${r.emolumentos ? 'R$ ' + brl(r.emolumentos) : ''}${paga}<div>${recebido}</div></div></div>`;
   },
 
   /* ---------------------------- Nova ---------------------------- */

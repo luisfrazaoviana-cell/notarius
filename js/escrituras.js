@@ -173,12 +173,19 @@ const Esc = {
   },
 
   itemHTML(r) {
-    const recebido = r.situacao === 'LAVRADA' && r.emolumentos ? (r.recebido ? '<span class="selo pago">RECEBIDO</span>' : '<span class="selo pendente">A RECEBER</span>') : '';
-    const paga = r.situacao === 'MINUTA' && r.recebido ? ' <span title="Minuta paga" aria-label="Minuta paga">✅</span>' : '';
+    // Só se lavra depois de receber: toda lavrada conta como recebida; minuta, só com depósito prévio marcado. Ato de outro escrevente não é receita do Luís.
+    const pago = r.situacao === 'LAVRADA' ? !r.outroEscrevente : r.situacao === 'MINUTA' && r.recebido;
+    const recebido = pago ? '<span class="selo pago">RECEBIDO</span>' : '';
     return `<div class="item" data-esc="${esc(r.id)}">
       <div><div class="t">${esc(r.nome)}</div>
         <div class="s"><span class="selo ${r.situacao === 'LAVRADA' ? 'lavrada' : 'minuta'}">${r.situacao || '—'}</span> ${esc(r.parceiro)}${r.dataLavratura ? ' · ' + dataBR(r.dataLavratura) : ''}${r.selo ? ' · selo ' + esc(r.selo) : ''}${r.semPasta ? ' · <b style="color:var(--red)">pasta não encontrada</b>' : ''} ${Pronta.selo(r)}</div></div>
-      <div class="v">${r.emolumentos ? 'R$ ' + brl(r.emolumentos) : ''}${paga}<div>${recebido}</div></div></div>`;
+      <div class="v">${r.emolumentos ? 'R$ ' + brl(r.emolumentos) : ''}<div>${recebido}</div></div></div>`;
+  },
+
+  // Ao lavrar: se o pagamento não estava marcado, marca com a data da lavratura; depósito prévio já lançado fica como está.
+  recebidoAoLavrar(r) {
+    if (r.recebido) return {};
+    return { recebido: true, dataRecebimento: r.dataLavratura, valorRecebido: r.valorRecebido || r.emolumentos || 0 };
   },
 
   /* ---------------------------- Nova ---------------------------- */
@@ -388,6 +395,7 @@ const Esc = {
       await Nuvem.renomear(await this.pastaDe(r), novo);
       Object.assign(r, { situacao: 'LAVRADA', pasta: novo, dataLavratura: resp.data || r.dataLavratura || hojeISO(), selo: resp.selo, livro: livro || r.livro || '', folhas: folhas || r.folhas || '',
         numAto: parseInt(resp.num, 10) || r.numAto || null });
+      Object.assign(r, this.recebidoAoLavrar(r));
       await Reg.salvar('escrituras', r);
       aviso('Pasta renomeada para LAVRADA.');
       fecharModal(); App.atualizarTudo(); this.detalhe(id);

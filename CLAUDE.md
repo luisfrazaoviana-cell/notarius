@@ -25,6 +25,7 @@ Este repositório é público. Documentos, minutas, escrituras, CPFs, matrícula
 | 3. Orçamento | Guia PIX pela Tabela 2026 (Grupo 1, ISS 5%), salvo em `04 - ORCAMENTOS`. | `orcamento-escritura-bujaru` |
 | 4. Lavratura | Com o selo digital: salvar em `02 - ESCRITURA LAVRADA (COM SELO)`, atualizar capa, renomear `MINUTA -` para `LAVRADA -`, atualizar índice e planilha de repasse. Depois, ficha de DOI/CENSEC. | `arquivar-escritura-por-parceiro` + `leitura-escrituras-doi-censec` |
 | 5. Análise de documentos e notas devolutivas | Qualificar título, responder item por item da nota de exigência com base no CNSNR-PA, CNN e súmulas. | `regularizacao-fundiaria-notarial-para` (TAF do ITCD: `taf-itcd-sefa-pa`) |
+| 6. Processos da Corregedoria (PJe-Cor) | Uma sessão por processo, com o número no nome. Ler a intimação, anotar o **prazo** primeiro, levantar no HD os atos e documentos citados, redigir a manifestação em Word e PDF, item por item, com fundamento no CNSNR-PA e CNN. Arquivar em `E:\CORREGEDORIA - PJE COR\<nº do processo>\` (01 - INTIMACAO, 02 - DOCUMENTOS, 03 - RESPOSTA, 04 - PROTOCOLO). **O Luis revisa e protocola ele mesmo no PJe-Cor**: o Claude nunca entra no sistema nem envia nada. | `regularizacao-fundiaria-notarial-para` |
 
 ## Quando um ato é LAVRADA (regra do Luis)
 

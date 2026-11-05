@@ -26,6 +26,12 @@ Este repositório é público. Documentos, minutas, escrituras, CPFs, matrícula
 | 4. Lavratura | Com o selo digital: salvar em `02 - ESCRITURA LAVRADA (COM SELO)`, atualizar capa, renomear `MINUTA -` para `LAVRADA -`, atualizar índice e planilha de repasse. Depois, ficha de DOI/CENSEC. | `arquivar-escritura-por-parceiro` + `leitura-escrituras-doi-censec` |
 | 5. Análise de documentos e notas devolutivas | Qualificar título, responder item por item da nota de exigência com base no CNSNR-PA, CNN e súmulas. | `regularizacao-fundiaria-notarial-para` (TAF do ITCD: `taf-itcd-sefa-pa`) |
 
+## Quando um ato é LAVRADA (regra do Luis)
+
+Só é LAVRADA o ato cujo documento tem **selo digital do TJPA**, ou **CNIB com livro e folha** corretos e sem campos `xxx` pendentes.
+O nome da pasta não prova nada. Nunca renomeie uma pasta para `LAVRADA -`, nem lance no índice ou no repasse, sem abrir o documento e conferir isso.
+Antes de alterar o índice ou a planilha de repasse, salve uma cópia em `E:\ESCRITURAS ORGANIZADAS\00 - BACKUPS\` com a data.
+
 ## Conferências obrigatórias antes de entregar
 
 1. Nomes, CPF/RG, estado civil, regime, matrícula, área e valor batem com os documentos (CPF sempre do documento oficial).
